@@ -1,45 +1,41 @@
 import torch
 import torch.optim as optim
 import numpy as np
-import sklearn
 from copy import deepcopy
-from models.utils import restore_parameters, AverageMeter
-from models.utils import SklearnClassifierWrapper
+from models.utils import validate_pytorch
 
 
-def validate(model, loader, loss_fn):
-    '''Calculate average loss.'''
-    device = next(model.parameters()).device
-    mean_loss = 0
-    N = 0
-    for x, y in loader:
-        x = x.to(device=device)
-        y = y.to(device=device)
-        n = len(x)
-        loss = loss_fn(model(x), y)
-        mean_loss = (N * mean_loss + n * loss) / (N + n)
-        N += n
-    return mean_loss
+def restore_parameters(model, best_model):
+    '''Move parameter values from best_model to model.'''
+    for param, best_param in zip(model.parameters(), best_model.parameters()):
+        param.data = best_param
 
 
-def validate_sklearn(model, loader, loss_fn):
-    '''Calculate average loss.'''
-    mean_loss = 0
-    N = 0
+class AverageMeter(object):
+    '''
+    For tracking moving average of loss.
 
-    # Add wrapper if necessary.
-    if isinstance(model, sklearn.base.ClassifierMixin):
-        model = SklearnClassifierWrapper(model)
+    Args:
+      r: parameter for calcualting exponentially moving average.
+    '''
+    def __init__(self, r=0.1):
+        self.r = r
+        self.reset()
 
-    for x, y in loader:
-        n = len(x)
-        loss = loss_fn(model.predict(x.cpu().numpy()), y.cpu().numpy())
-        mean_loss = (N * mean_loss + n * loss) / (N + n)
-        N += n
-    return mean_loss
+    def reset(self):
+        self.loss = None
+
+    def update(self, loss):
+        if not self.loss:
+            self.loss = loss
+        else:
+            self.loss = self.r * self.loss + (1 - self.r) * loss
+
+    def get(self):
+        return self.loss
 
 
-class Train:
+class TrainPyTorch:
     def __init__(self, model):
         self.model = model
         self.train_list = []
@@ -91,7 +87,7 @@ class Train:
             with torch.no_grad():
                 train_loss = meter.get()
                 meter.reset()
-                val_loss = validate(
+                val_loss = validate_pytorch(
                     model, val_loader, evaluation_loss_fn).item()
                 self.val_list.append(val_loss)
 

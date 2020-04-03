@@ -5,10 +5,7 @@ from tqdm import tqdm_notebook as tqdm
 import importance.utils as utils
 
 
-def estimate_total(model,
-                   dataset,
-                   batch_size,
-                   loss_fn):
+def estimate_total(model, dataset, batch_size, loss_fn):
     # Estimate expected sum of values.
     device = next(model.parameters()).device
     sequential_loader = DataLoader(dataset, batch_size=batch_size)
@@ -57,18 +54,27 @@ def permutation_sampling(model,
     Estimates SAGE values by unrolling permutations of feature indices.
 
     Args:
-      model:
-      dataset:
-      imputation_module:
-      loss:
-      batch_size:
-      n_samples:
-      m_samples:
-      detect_convergence:
-      convergence_threshold:
-      verbose:
-      bar:
+      model: PyTorch model. Must be callable, likely inherits from nn.Module.
+      dataset: PyTorch dataset, such as data.utils.TabularDataset.
+      imputation_module: for imputing held out values, such as
+        utils.MarginalImputation.
+      loss: string descriptor of loss function ('mse', 'cross entropy').
+      batch_size: number of examples to be processed at once.
+      n_samples: number of outer loop samples.
+      m_samples: number of inner loop samples.
+      detect_convergence: whether to detect convergence of SAGE estimates.
+      convergence_threshold: confidence interval threshold for determining
+        convergence. Represents portion of estimated sum of SAGE values.
+      verbose: whether to print progress messages.
+      bar: whether to display progress bar.
     '''
+    # Verify imputation module is valid.
+    assert isinstance(imputation_module, utils.ImputationModule)
+    if isinstance(imputation_module, utils.ReferenceImputation):
+        if m_samples != 1:
+            m_samples = 1
+            print('Using ReferenceImputation, setting m_samples = 1')
+
     # Setup.
     device = next(model.parameters()).device
     input_size = dataset.input_size
@@ -80,6 +86,9 @@ def permutation_sampling(model,
         num_workers=4, pin_memory=True)
     loss_fn = utils.get_loss_pytorch(loss, reduction='none')
     total = estimate_total(model, dataset, batch_size, loss_fn)
+
+    # Verify model outputs are valid.
+    utils.verify_pytorch_model(model, next(iter(loader))[0], loss)
 
     # Print message explaining parameter choices.
     if verbose:
@@ -169,18 +178,27 @@ def iterated_sampling(model,
     Estimates SAGE values one at a time, by sampling subsets of features.
 
     Args:
-      model:
-      dataset:
-      imputation_module:
-      loss:
-      batch_size:
-      n_samples:
-      m_samples:
-      detect_convergence:
-      convergence_threshold:
-      verbose:
-      bar:
+      model: PyTorch model. Must be callable, likely inherits from nn.Module.
+      dataset: PyTorch dataset, such as data.utils.TabularDataset.
+      imputation_module: for imputing held out values, such as
+        utils.MarginalImputation.
+      loss: string descriptor of loss function ('mse', 'cross entropy').
+      batch_size: number of examples to be processed at once.
+      n_samples: number of outer loop samples.
+      m_samples: number of inner loop samples.
+      detect_convergence: whether to detect convergence of SAGE estimates.
+      convergence_threshold: confidence interval threshold for determining
+        convergence. Represents portion of estimated sum of SAGE values.
+      verbose: whether to print progress messages.
+      bar: whether to display progress bar.
     '''
+    # Verify imputation module is valid.
+    assert isinstance(imputation_module, utils.ImputationModule)
+    if isinstance(imputation_module, utils.ReferenceImputation):
+        if m_samples != 1:
+            m_samples = 1
+            print('Using ReferenceImputation, setting m_samples = 1')
+
     # Setup.
     device = next(model.parameters()).device
     input_size = dataset.input_size
@@ -192,6 +210,9 @@ def iterated_sampling(model,
         num_workers=4, pin_memory=True)
     loss_fn = utils.get_loss_pytorch(loss, reduction='none')
     total = estimate_total(model, dataset, batch_size, loss_fn)
+
+    # Verify model outputs are valid.
+    utils.verify_pytorch_model(model, next(iter(loader))[0], loss)
 
     # Print message explaining parameter choices.
     if verbose:

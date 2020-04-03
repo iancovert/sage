@@ -1,6 +1,8 @@
 # SAGE
 
-**SAGE (Shapley Additive Global importancE)** is a game theoretic approach for understanding black-box machine learning models. It summarizes the importance of each feature based on the predictive power it contributes. Defining feature importance is difficult because of complex feature interactions, like redundancy and complementary behavior, but SAGE accounts for this complexity by considering all subsets of features using the Shapley value from cooperative game theory.
+**SAGE (Shapley Additive Global importancE)** is a game theoretic approach for understanding black-box machine learning models. It summarizes the importance of each feature based on the predictive power it contributes. Defining feature importance is difficult because of complex feature interactions like redundancy and complementary behavior, and SAGE accounts for this complexity by considering all subsets of features using the Shapley value from cooperative game theory.
+
+SAGE is described in detail in [this paper](https://arxiv.org/abs/2004.00668).
 
 ## Install
 
@@ -17,3 +19,7 @@ See `credit.ipynb` for an example using gradient boosting machines (GBM), and se
 - Ian Covert (<icovert@cs.washington.edu>)
 - Scott Lundberg
 - Su-In Lee
+
+## References
+
+Ian Covert, Scott Lundberg, Su-In Lee. "Understanding Global Feature Contributions Through Additive Importance Measures." *arXiv preprint arXiv:2004.00668*, 2020.

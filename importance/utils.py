@@ -33,7 +33,20 @@ class ImportanceTracker:
         return (self.second_moment - self.first_moment ** 2) / self.N
 
 
-class ReferenceImputation:
+class ImputationModule:
+    '''Base class for imputation modules used for SAGE. Child classes should
+    support the impute and impute_ind functions.'''
+    def __init__(self):
+        raise NotImplementedError
+
+    def impute(self, x, S):
+        raise NotImplementedError
+
+    def impute_ind(self, x, ind):
+        raise NotImplementedError
+
+
+class ReferenceImputation(ImputationModule):
     '''
     For imputing sets of features, using a reference value.
 
@@ -63,7 +76,7 @@ class ReferenceImputation:
         return x
 
 
-class MarginalImputation:
+class MarginalImputation(ImputationModule):
     '''
     For imputing sets of features, using a draw from the joint marginal.
 
@@ -147,4 +160,18 @@ def sample_subset_feature(input_size, batch_size, ind):
             choices, size=np.random.choice(input_size), replace=False)
         row[inds] = 1.0
     return torch.tensor(S)
+
+
+def verify_pytorch_model(model, x, loss):
+    if loss == 'cross entropy':
+        device = next(model.parameters()).device
+        probs = model(x.to(device=device))
+        ones = torch.sum(probs, dim=-1)
+        valid_probs = torch.allclose(
+            ones, torch.ones(ones.shape, device=device))
+        if not valid_probs:
+            raise ValueError(
+                'inferred classification model because loss = cross entropy, '
+                'but outputs are not valid probs. Please add softmax layer')
+    pass
 

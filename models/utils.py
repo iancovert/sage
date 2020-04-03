@@ -1,31 +1,66 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import sklearn
 
 
-def activation_helper(activation):
-    '''Get activation function.'''
-    if activation == 'sigmoid':
-        act = nn.Sigmoid()
-    elif activation == 'tanh':
-        act = nn.Tanh()
-    elif activation == 'relu':
-        act = nn.ReLU()
-    elif activation == 'softplus':
-        act = nn.Softplus()
-    elif activation == 'elu':
-        act = nn.ELU()
-    elif activation == 'softmax':
-        act = nn.Softmax(dim=-1)
-    elif activation is None:
-        act = nn.Identity()
-    else:
-        raise ValueError('unsupported activation: {}'.format(activation))
-    return act
+def validate_pytorch(model, loader, loss_fn):
+    '''Calculate average loss.
+
+    Args:
+      model: PyTorch model. Must be callable, likely inherits from nn.Module.
+      loader: PyTorch data loader.
+      loss_fn: loss function, such as nn.CrossEntropyLoss().
+    '''
+    device = next(model.parameters()).device
+    mean_loss = 0
+    N = 0
+    for x, y in loader:
+        x = x.to(device=device)
+        y = y.to(device=device)
+        n = len(x)
+        loss = loss_fn(model(x), y)
+        mean_loss = (N * mean_loss + n * loss) / (N + n)
+        N += n
+    return mean_loss
+
+
+def validate_sklearn(model, loader, loss_fn):
+    '''Calculate average loss.
+
+    Args:
+      model: sklearn model.
+      loader: PyTorch data loader.
+      loss_fn: loss function, such as CrossEntropyLossNP() (a custom function
+       in this library) or sklearn.metrics.log_loss.
+    '''
+    mean_loss = 0
+    N = 0
+
+    # Add wrapper if necessary.
+    if isinstance(model, sklearn.base.ClassifierMixin):
+        model = SklearnClassifierWrapper(model)
+
+    # Detect if one of our custom loss functions.
+    custom = (
+        isinstance(loss_fn, CrossEntropyLossNP) or
+        isinstance(loss_fn, AccuracyNP) or
+        isinstance(loss_fn, MSELossNP))
+
+    for x, y in loader:
+        n = len(x)
+        if custom:
+            loss = loss_fn(model.predict(x.cpu().numpy()), y.cpu().numpy())
+        else:
+            loss = loss_fn(y.cpu().numpy(), model.predict(x.cpu().numpy()))
+        mean_loss = (N * mean_loss + n * loss) / (N + n)
+        N += n
+    return mean_loss
 
 
 class MSELoss(nn.Module):
-    '''MSE loss that always sums over non-batch dimensions.'''
+    '''MSE loss that always sums over non-batch dimensions. For use with PyTorch
+    models only.'''
     def __init__(self, reduction='mean'):
         super(MSELoss, self).__init__()
         assert reduction in ('none', 'mean')
@@ -42,7 +77,8 @@ class MSELoss(nn.Module):
 
 
 class CrossEntropyLoss(nn.Module):
-    '''Cross entropy loss that expects probabilities.'''
+    '''Cross entropy loss that expects probabilities. For use with PyTorch
+    models only.'''
     def __init__(self, reduction='mean'):
         super(CrossEntropyLoss, self).__init__()
         assert reduction in ('none', 'mean')
@@ -57,7 +93,7 @@ class CrossEntropyLoss(nn.Module):
 
 
 class Accuracy(nn.Module):
-    '''0-1 loss.'''
+    '''0-1 loss. For use with PyTorch models only.'''
     def __init__(self):
         super(Accuracy, self).__init__()
 
@@ -67,7 +103,8 @@ class Accuracy(nn.Module):
 
 
 class NegAccuracy(Accuracy):
-    '''0-1 loss, negated for use as validation loss during training.'''
+    '''0-1 loss, negated for use as validation loss during training. For use
+    with PyTorch models only.'''
     def __init__(self):
         super(NegAccuracy, self).__init__()
 
@@ -77,7 +114,8 @@ class NegAccuracy(Accuracy):
 
 
 class MSELossNP:
-    '''MSE loss that always sums over non-batch dimensions.'''
+    '''MSE loss that always sums over non-batch dimensions. For use with sklearn
+    models.'''
     def __init__(self, reduction='mean'):
         assert reduction in ('none', 'mean')
         self.reduction = reduction
@@ -95,7 +133,8 @@ class MSELossNP:
 
 
 class CrossEntropyLossNP:
-    '''Cross entropy loss that expects probabilities.'''
+    '''Cross entropy loss that expects probabilities. For use with sklearn
+    models.'''
     def __init__(self, reduction='mean'):
         assert reduction in ('none', 'mean')
         self.reduction = reduction
@@ -109,7 +148,7 @@ class CrossEntropyLossNP:
 
 
 class AccuracyNP:
-    '''0-1 loss.'''
+    '''0-1 loss. For use with sklearn models.'''
     def __init__(self):
         pass
 
@@ -119,39 +158,12 @@ class AccuracyNP:
 
 
 class SklearnClassifierWrapper:
+    '''For sklearn classification models, which require the predict_proba
+    function to output probabilities.'''
     def __init__(self, model):
         self.model = model
 
     def predict(self, x):
+        # Output classification probabilities.
         return self.model.predict_proba(x)
-
-
-class AverageMeter(object):
-    '''
-    For tracking moving average of loss.
-
-    Args:
-      r: parameter for calcualting exponentially moving average.
-    '''
-    def __init__(self, r=0.1):
-        self.r = r
-        self.reset()
-
-    def reset(self):
-        self.loss = None
-
-    def update(self, loss):
-        if not self.loss:
-            self.loss = loss
-        else:
-            self.loss = self.r * self.loss + (1 - self.r) * loss
-
-    def get(self):
-        return self.loss
-
-
-def restore_parameters(model, best_model):
-    '''Move parameter values from best_model to model.'''
-    for param, best_param in zip(model.parameters(), best_model.parameters()):
-        param.data = best_param
 

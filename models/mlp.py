@@ -1,5 +1,25 @@
 import torch.nn as nn
-from models.utils import activation_helper
+
+
+def activation_helper(activation):
+    '''Get activation function.'''
+    if activation == 'sigmoid':
+        act = nn.Sigmoid()
+    elif activation == 'tanh':
+        act = nn.Tanh()
+    elif activation == 'relu':
+        act = nn.ReLU()
+    elif activation == 'softplus':
+        act = nn.Softplus()
+    elif activation == 'elu':
+        act = nn.ELU()
+    elif activation == 'softmax':
+        act = nn.Softmax(dim=-1)
+    elif activation is None:
+        act = nn.Identity()
+    else:
+        raise ValueError('unsupported activation: {}'.format(activation))
+    return act
 
 
 class MLP(nn.Module):
@@ -43,3 +63,4 @@ class MLP(nn.Module):
     def extra_repr(self):
         return 'in_features={}, out_features={}'.format(
             self.input_size, self.output_size)
+

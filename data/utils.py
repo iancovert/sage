@@ -6,6 +6,10 @@ from sklearn.model_selection import train_test_split
 class TabularDataset(Dataset):
     '''
     Dataset wrapper, capable of using subset of inputs and outputs.
+
+    Args:
+      data: np.ndarray with shape (N, input_size) containing inputs.
+      labels: np.ndarray with shape (N,) or (N, output_size) containing outputs.
     '''
     def __init__(self,
                  data,
@@ -22,6 +26,7 @@ class TabularDataset(Dataset):
         self.set_output_inds(None)
 
     def set_inds(self, inds):
+        # Choose subset of inputs to be returned.
         data = self.data
         if inds is not None:
             inds = np.array([i in inds for i in range(self.input_size)])
@@ -29,6 +34,7 @@ class TabularDataset(Dataset):
         self.input = data
 
     def set_output_inds(self, inds):
+        # Choose subset of outputs to be returned.
         output = self.labels
         if inds is not None:
             assert len(output.shape) == 2

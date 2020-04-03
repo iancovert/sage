@@ -7,10 +7,7 @@ import importance.utils as utils
 from models.utils import SklearnClassifierWrapper
 
 
-def estimate_total(model,
-                   dataset,
-                   batch_size,
-                   loss_fn):
+def estimate_total(model, dataset, batch_size, loss_fn):
     # Estimate expected sum of values.
     sequential_loader = DataLoader(dataset, batch_size=batch_size)
     N = 0
@@ -53,21 +50,30 @@ def permutation_sampling(model,
     Estimates SAGE values by unrolling permutations of feature indices.
 
     Args:
-      model:
-      dataset:
-      imputation_module:
-      loss:
-      batch_size:
-      n_samples:
-      m_samples:
-      detect_convergence:
-      convergence_threshold:
-      verbose:
-      bar:
+      model: sklearn model.
+      dataset: PyTorch dataset, such as data.utils.TabularDataset.
+      imputation_module: for imputing held out values, such as
+        utils.MarginalImputation.
+      loss: string descriptor of loss function ('mse', 'cross entropy').
+      batch_size: number of examples to be processed at once.
+      n_samples: number of outer loop samples.
+      m_samples: number of inner loop samples.
+      detect_convergence: whether to detect convergence of SAGE estimates.
+      convergence_threshold: confidence interval threshold for determining
+        convergence. Represents portion of estimated sum of SAGE values.
+      verbose: whether to print progress messages.
+      bar: whether to display progress bar.
     '''
     # Add wrapper if necessary.
     if isinstance(model, sklearn.base.ClassifierMixin):
         model = SklearnClassifierWrapper(model)
+
+    # Verify imputation module is valid.
+    assert isinstance(imputation_module, utils.ImputationModule)
+    if isinstance(imputation_module, utils.ReferenceImputation):
+        if m_samples != 1:
+            m_samples = 1
+            print('Using ReferenceImputation, setting m_samples = 1')
 
     # Setup.
     input_size = dataset.input_size
@@ -165,21 +171,30 @@ def iterated_sampling(model,
     Estimates SAGE values one at a time, by sampling subsets of features.
 
     Args:
-      model:
-      dataset:
-      imputation_module:
-      loss:
-      batch_size:
-      n_samples:
-      m_samples:
-      detect_convergence:
-      convergence_threshold:
-      verbose:
-      bar:
+      model: sklearn model.
+      dataset: PyTorch dataset, such as data.utils.TabularDataset.
+      imputation_module: for imputing held out values, such as
+        utils.MarginalImputation.
+      loss: string descriptor of loss function ('mse', 'cross entropy').
+      batch_size: number of examples to be processed at once.
+      n_samples: number of outer loop samples.
+      m_samples: number of inner loop samples.
+      detect_convergence: whether to detect convergence of SAGE estimates.
+      convergence_threshold: confidence interval threshold for determining
+        convergence. Represents portion of estimated sum of SAGE values.
+      verbose: whether to print progress messages.
+      bar: whether to display progress bar.
     '''
     # Add wrapper if necessary.
     if isinstance(model, sklearn.base.ClassifierMixin):
         model = SklearnClassifierWrapper(model)
+
+    # Verify imputation module is valid.
+    assert isinstance(imputation_module, utils.ImputationModule)
+    if isinstance(imputation_module, utils.ReferenceImputation):
+        if m_samples != 1:
+            m_samples = 1
+            print('Using ReferenceImputation, setting m_samples = 1')
 
     # Setup.
     input_size = dataset.input_size
