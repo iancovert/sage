@@ -6,7 +6,7 @@ SAGE is described in detail in [this paper](https://arxiv.org/abs/2004.00668).
 
 ## Install
 
-Please clone our GitHub repository to use the code. The only other packages you'll need are `numpy`, `torch`, `sklearn`, and `tqdm`.
+Please clone our GitHub repository to use the code. The only other packages you'll need are `numpy`, `sklearn`, and `tqdm`.
 
 ## Usage
 
