@@ -1,18 +1,44 @@
 # SAGE
 
-**SAGE (Shapley Additive Global importancE)** is a game theoretic approach for understanding black-box machine learning models. It summarizes the importance of each feature based on the predictive power it contributes. Defining feature importance is difficult because of complex feature interactions like redundancy and complementary behavior, and SAGE accounts for this complexity by considering all subsets of features using the Shapley value from cooperative game theory.
+**SAGE (Shapley Additive Global importancE)** is a game theoretic approach for understanding black-box machine learning models. It summarizes the importance of each feature based on the predictive power it contributes, and accounts for complex feature interactions by using the Shapley value from cooperative game theory.
 
 SAGE is described in detail in [this paper](https://arxiv.org/abs/2004.00668).
 
-## Install
-
-Please clone our GitHub repository to use the code. The only other packages you'll need are `numpy`, `sklearn`, and `tqdm`.
-
 ## Usage
 
-SAGE is model-agnostic, but it makes the most sense for tabular datasets where each feature (e.g., age) has a consistent meaning. (Structured data types like images are better understood through individal predictions using *local* interpretability methods, such as [SHAP](https://github.com/slundberg/shap).) Our code currently supports PyTorch and Sklearn models, but we're open to supporting more frameworks.
+SAGE is model-agnostic, so you can use it with any kind of machine learning model. All you need to do is wrap the model in a function to make it callable, set up a data imputer, and run the sampling algorithm:
 
-See `credit.ipynb` for an example using gradient boosting machines (GBM), and see `bike.ipynb` for an example using a PyTorch multi-layer perceptron (MLP).
+```python
+import sage
+
+# Get data
+x, y = ...
+
+# Get model
+model = ...
+
+# For representing data distribution
+imputer = sage.utils.MarginalImputer(x, samples=512)
+
+# Set up sampling object
+sampler = sage.PermutationSampler(
+    model,
+    imputer,
+    'cross entropy')
+
+# Calculate SAGE values
+sage_values = sampler(
+    (x, y),
+    batch_size=256,
+    n_permutations=8096,
+    bar=True)
+```
+
+See [credit.ipynb](https://github.com/icc2115/sage/blob/master/credit.ipynb) for an example using gradient boosting machines (GBM), and [bike.ipynb](https://github.com/icc2115/sage/blob/master/bike.ipynb) for an example using a PyTorch multi-layer perceptron (MLP).
+
+## Install
+
+Please clone our GitHub repository to use the code. The only packages you'll need are `numpy`, `matplotlib` and `tqdm` (plus the packages you need for your machine learning models).
 
 ## Authors
 

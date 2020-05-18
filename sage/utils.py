@@ -167,6 +167,14 @@ class MSELoss:
 
 
 class CrossEntropyLoss:
+    # TODO infer whether binary classification based on output size.
+    # If (n_samples,) then it's binary. Labels must be (0, 1) or (-1, 1).
+
+    # TODO if (n_samples, k) then it may still be binary, but we don't care.
+    # Verify that classes are 0, 1, 2, ..., k.
+
+    # TODO then do this again for accuracy.
+
     '''Cross entropy loss that expects probabilities.'''
     def __init__(self, reduction='mean'):
         assert reduction in ('none', 'mean')
@@ -180,6 +188,20 @@ class CrossEntropyLoss:
             return loss
 
 
+class BCELoss:
+    '''Binary cross entropy loss that expects probabilities.'''
+    def __init__(self, reduction='mean'):
+        assert reduction in ('none', 'mean')
+        self.reduction = reduction
+
+    def __call__(self, pred, target):
+        loss = - target * np.log(pred) - (1 - target) * np.log(1 - pred)
+        if self.reduction == 'mean':
+            return np.mean(loss)
+        else:
+            return loss
+
+
 class Accuracy:
     '''0-1 loss.'''
     def __init__(self, reduction='mean'):
@@ -187,7 +209,7 @@ class Accuracy:
         self.reduction = reduction
 
     def __call__(self, pred, target):
-        acc = np.argmax(pred, axis=1) == target
+        acc = (np.argmax(pred, axis=1) == target).astype(float)
         if self.reduction == 'mean':
             return np.mean(acc)
         else:
@@ -201,7 +223,35 @@ class NegAccuracy:
         self.reduction = reduction
 
     def __call__(self, pred, target):
-        neg_acc = - (np.argmax(pred, axis=1) == target)
+        neg_acc = - (np.argmax(pred, axis=1) == target).astype(float)
+        if self.reduction == 'mean':
+            return np.mean(neg_acc)
+        else:
+            return neg_acc
+
+
+class BinaryAccuracy:
+    '''0-1 loss for binary classifier.'''
+    def __init__(self, reduction='mean'):
+        assert reduction in ('none', 'mean')
+        self.reduction = reduction
+
+    def __call__(self, pred, target):
+        acc = ((pred > 0.5) == target).astype(float)
+        if self.reduction == 'mean':
+            return np.mean(acc)
+        else:
+            return acc
+
+
+class NegBinaryAccuracy:
+    '''Negative 0-1 loss for binary classifier.'''
+    def __init__(self, reduction='mean'):
+        assert reduction in ('none', 'mean')
+        self.reduction = reduction
+
+    def __call__(self, pred, target):
+        neg_acc = - ((pred > 0.5) == target).astype(float)
         if self.reduction == 'mean':
             return np.mean(neg_acc)
         else:
@@ -255,10 +305,14 @@ def get_loss(loss, reduction='mean'):
     '''Get loss function by name.'''
     if loss == 'cross entropy':
         loss_fn = CrossEntropyLoss(reduction=reduction)
+    elif loss == 'binary cross entropy':
+        loss_fn = BCELoss(reduction=reduction)
     elif loss == 'mse':
         loss_fn = MSELoss(reduction=reduction)
     elif loss == 'accuracy':
         loss_fn = NegAccuracy(reduction=reduction)
+    elif loss == 'binary accuracy':
+        loss_fn = NegBinaryAccuracy(reduction=reduction)
     else:
         raise ValueError('unsupported loss: {}'.format(loss))
     return loss_fn
@@ -281,12 +335,48 @@ def sample_subset_feature(input_size, n, ind):
     return S
 
 
-def verify_model(model, x, loss):
-    '''Ensure that model is set up properly.'''
+def verify_model_data(model, x, y, loss, mbsize):
+    '''Ensure that model and data are set up properly.'''
+    # Verify that model output is compatible with labels.
+    if isinstance(loss, CrossEntropyLoss) or isinstance(loss, NegAccuracy):
+        assert y.shape == (len(x),)
+        probs = model(x[:mbsize])
+        classes = probs.shape[1]
+        assert classes > 1, 'require multiple outputs for multiclass models'
+        if len(np.setdiff1d(np.unique(y), np.arange(classes))) == 0:
+            # This is the preffered label encoding.
+            pass
+        elif len(np.setdiff1d(np.unique(y), [-1, 1])) == 0:
+            # Set -1s to 0s.
+            y = np.copy(y)
+            y[y == -1] = 0
+        else:
+            raise ValueError('labels for multiclass classification must be '
+                             '(0, 1, ..., c)')
+    elif isinstance(loss, BCELoss) or isinstance(loss, NegBinaryAccuracy):
+        assert y.shape == (len(x),)
+        if len(np.setdiff1d(np.unique(y), [0, 1])) == 0:
+            # This is the preffered label encoding.
+            pass
+        elif len(np.setdiff1d(np.unique(y), [-1, 1])) == 0:
+            # Set -1s to 0s.
+            y = np.copy(y)
+            y[y == -1] = 0
+        else:
+            raise ValueError('labels for binary classification must be (0, 1) '
+                             'or (-1, 1)')
+
+    # Verify that outputs are probabilities.
     if isinstance(loss, CrossEntropyLoss):
-        probs = model(x)
+        probs = model(x[:mbsize])
         ones = np.sum(probs, axis=-1)
         if not np.allclose(ones, np.ones(ones.shape)):
             raise ValueError(
                 'outputs must be valid probabilities for cross entropy loss')
-    return
+    elif isinstance(loss, BCELoss):
+        probs = model(x[:mbsize])
+        if not np.all(np.logical_and(0 <= probs, probs <= 1)):
+            raise ValueError(
+                'outputs must be valid probabilities for cross entropy loss')
+
+    return x, y

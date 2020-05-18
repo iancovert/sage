@@ -81,8 +81,8 @@ class PermutationSampler:
         N, input_size = X.shape
 
         # Verify model.
-        utils.verify_model(self.model, X[:(batch_size * self.imputer.samples)],
-                           self.loss_fn)
+        X, Y = utils.verify_model_data(self.model, X, Y, self.loss_fn,
+                                       batch_size * self.imputer.samples)
 
         # For detecting cnovergence.
         total = estimate_total(
@@ -220,8 +220,8 @@ class IteratedSampler:
         N, input_size = X.shape
 
         # Verify model.
-        utils.verify_model(self.model, X[:(batch_size * self.imputer.samples)],
-                           self.loss_fn)
+        X, Y = utils.verify_model_data(self.model, X, Y, self.loss_fn,
+                                       batch_size * self.imputer.samples)
 
         # For detecting cnovergence.
         total = estimate_total(
