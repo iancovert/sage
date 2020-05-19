@@ -2,7 +2,7 @@
 
 **SAGE (Shapley Additive Global importancE)** is a game theoretic approach for understanding black-box machine learning models. It summarizes the importance of each feature based on the predictive power it contributes, and accounts for complex feature interactions by using the Shapley value from cooperative game theory.
 
-SAGE is described in detail in [this paper](https://arxiv.org/abs/2004.00668).
+SAGE is described in detail in [this paper](https://arxiv.org/abs/2004.00668), but if you're new to using Shapley values, you might prefer starting with this [blog post](https://iancovert.com/blog/understanding-shap-sage/).
 
 ## Usage
 
@@ -17,7 +17,7 @@ x, y = ...
 # Get model
 model = ...
 
-# For representing data distribution
+# Set up imputer for representing data distribution
 imputer = sage.utils.MarginalImputer(x, samples=512)
 
 # Set up sampling object
@@ -38,7 +38,18 @@ See [credit.ipynb](https://github.com/icc2115/sage/blob/master/credit.ipynb) for
 
 ## Install
 
-Please clone our GitHub repository to use the code. The only packages you'll need are `numpy`, `matplotlib` and `tqdm` (plus the packages you need for your machine learning models).
+<!-- Please clone our GitHub repository to use the code. The only packages you'll need are `numpy`, `matplotlib` and `tqdm` (plus the packages you need for your machine learning models). -->
+There are a couple ways to use the code. The easiest way is installing `sage-importance` with `pip`:
+
+```bash
+pip install sage-importance
+```
+
+Alternatively, you can clone the repository and install the package using the local `setup.py` file:
+
+```bash
+pip install .
+```
 
 ## Authors
 
