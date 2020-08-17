@@ -1,45 +1,12 @@
 # SAGE
 
-**SAGE (Shapley Additive Global importancE)** is a game theoretic approach for understanding black-box machine learning models. It summarizes the importance of each feature based on the predictive power it contributes, and accounts for complex feature interactions by using the Shapley value from cooperative game theory.
+**SAGE (Shapley Additive Global importancE)** is a game-theoretic approach for understanding black-box machine learning models. It summarizes each feature's importance based on the predictive power it contributes, and it accounts for complex feature interactions using the Shapley value.
 
-SAGE is described in detail in [this paper](https://arxiv.org/abs/2004.00668), but if you're new to using Shapley values, you might prefer starting with this [blog post](https://iancovert.com/blog/understanding-shap-sage/).
-
-## Usage
-
-SAGE is model-agnostic, so you can use it with any kind of machine learning model. All you need to do is wrap the model in a function to make it callable, set up a data imputer, and run the sampling algorithm:
-
-```python
-import sage
-
-# Get data
-x, y = ...
-
-# Get model
-model = ...
-
-# Set up imputer for representing data distribution
-imputer = sage.utils.MarginalImputer(x, samples=512)
-
-# Set up sampling object
-sampler = sage.PermutationSampler(
-    model,
-    imputer,
-    'cross entropy')
-
-# Calculate SAGE values
-sage_values = sampler(
-    (x, y),
-    batch_size=256,
-    n_permutations=8096,
-    bar=True)
-```
-
-See [credit.ipynb](https://github.com/icc2115/sage/blob/master/credit.ipynb) for an example using gradient boosting machines (GBM), and [bike.ipynb](https://github.com/icc2115/sage/blob/master/bike.ipynb) for an example using a PyTorch multi-layer perceptron (MLP).
+SAGE is described in detail in [this paper](https://arxiv.org/abs/2004.00668), but if you're new to using Shapley values you might want to start by reading this [blog post](https://iancovert.com/blog/understanding-shap-sage/).
 
 ## Install
 
-<!-- Please clone our GitHub repository to use the code. The only packages you'll need are `numpy`, `matplotlib` and `tqdm` (plus the packages you need for your machine learning models). -->
-There are a couple ways to use the code. The easiest way is installing `sage-importance` with `pip`:
+<!--The easiest way to use the code is to install `sage-importance` with `pip`:
 
 ```bash
 pip install sage-importance
@@ -49,7 +16,54 @@ Alternatively, you can clone the repository and install the package using the lo
 
 ```bash
 pip install .
+```-->
+
+The easiest way to get started is to clone the repository and install the package into your Python environment:
+
+```bash
+pip install .
 ```
+
+## Usage
+
+SAGE is model-agnostic, so you can use it with any kind of machine learning model. All you need to do is set up a data imputer and run a sampler:
+
+```python
+import sage
+
+# Get data
+x, y = ...
+feature_names = ...
+
+# Get model
+model = ...
+
+# Set up imputer to represent the data distribution
+imputer = sage.MarginalImputer(x, samples=512)
+
+# Set up sampler
+sampler = sage.PermutationSampler(model, imputer, 'cross entropy')
+
+# Calculate SAGE values
+sage_values = sampler(x, y)
+sage_values.plot(feature_names)
+```
+
+The result will look something like this.
+
+<p align="center">
+  <img width="500" src="https://raw.githubusercontent.com/iancovert/sage/master/docs/bike.png"/>
+</p>
+
+**Convergence.** Convergence is determined automatically based on the size of each value's confidence interval, and a progress bar will display the estimated time until convergence.
+
+**Uncertainty estimation.** Standard deviation confidence intervals are returned for each feature's SAGE value.
+
+**Model conversion.** Our back-end requires that models be converted into a consistent format, and this conversion step is performed automatically for XGBoost, CatBoost, LightGBM, sklearn and PyTorch models. If you're using a different kind of model, you'll need to convert it to a callable function (see [here](https://github.com/iancovert/sage/blob/master/sage/utils.py#L163) for examples).
+
+## Examples
+
+See [bike.ipynb](https://github.com/iancovert/sage/blob/master/bike.ipynb) for an example using XGBoost, [credit.ipynb](https://github.com/iancovert/sage/blob/master/credit.ipynb) for an example using CatBoost, and [airbnb.ipynb](https://github.com/iancovert/sage/blob/master/airbnb.ipynb) for an example using a PyTorch MLP.
 
 ## Authors
 

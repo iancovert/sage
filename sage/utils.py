@@ -1,121 +1,5 @@
+import sys
 import numpy as np
-import matplotlib.pyplot as plt
-
-
-class SAGEValues:
-    '''For storing and plotting SAGE values.'''
-    def __init__(self, values, std):
-        self.values = values
-        self.std = std
-
-    def plot(self,
-             feature_names,
-             sort_features=True,
-             max_features=np.inf,
-             fig=None,
-             figsize=(12, 7),
-             orientation='horizontal',
-             error_bars=True,
-             color='forestgreen',
-             title='Feature Importance',
-             title_size=20,
-             y_axis_label_size=14,
-             x_axis_label_size=14,
-             label_rotation=None,
-             tick_size=14):
-        '''
-        Plot SAGE values.
-
-        Args:
-          feature_names: list of feature names.
-          sort_features: whether to sort features by their SAGE values.
-          max_features: number of features to display.
-          fig: matplotlib figure (optional).
-          figsize: figure size (if fig is None).
-          orientation: horizontal (default) or vertical.
-          error_bars: whether to include standard deviation error bars.
-          color: bar chart color.
-          title: plot title.
-          title_size: font size for title.
-          y_axis_label_size: font size for y axis label.
-          x_axis_label_size: font size for x axix label.
-          label_rotation: label rotation (for vertical plots only).
-          tick_size: tick sizes (for SAGE value axis only).
-        '''
-        if fig is None:
-            fig = plt.figure(figsize=figsize)
-        ax = fig.gca()
-
-        # Sort features if necessary.
-        if max_features < len(feature_names):
-            sort_features = True
-        values = self.values
-        std = self.std
-        if sort_features:
-            argsort = np.argsort(values)[::-1]
-            values = values[argsort]
-            std = std[argsort]
-            feature_names = np.array(feature_names)[argsort]
-
-        # Remove extra features if necessary.
-        if max_features < len(feature_names):
-            feature_names = list(feature_names[:max_features]) + ['Remaining']
-            values = (list(values[:max_features])
-                      + [np.sum(values[max_features:])])
-            std = (list(std[:max_features])
-                   + [np.sum(std[max_features:] ** 2) ** 0.5])
-
-        if orientation == 'horizontal':
-            # Bar chart.
-            if error_bars:
-                ax.barh(np.arange(len(feature_names))[::-1], values,
-                        color=color, xerr=std)
-            else:
-                ax.barh(np.arange(len(feature_names))[::-1], values,
-                        color=color)
-
-            # Feature labels.
-            if label_rotation is not None:
-                raise ValueError('rotation not supported for horizontal charts')
-            ax.set_yticks(np.arange(len(feature_names))[::-1])
-            ax.set_yticklabels(feature_names, fontsize=y_axis_label_size)
-
-            # Axis labels and ticks.
-            ax.set_ylabel('')
-            ax.set_xlabel('SAGE values', fontsize=x_axis_label_size)
-            ax.tick_params(axis='x', labelsize=tick_size)
-        elif orientation == 'vertical':
-            # Bar chart.
-            if error_bars:
-                ax.bar(np.arange(len(feature_names)), values, color=color,
-                       yerr=std)
-            else:
-                ax.bar(np.arange(len(feature_names)), values, color=color)
-
-            # Feature labels.
-            if label_rotation is None:
-                label_rotation = 90
-            if label_rotation < 90:
-                ha = 'right'
-                rotation_mode = 'anchor'
-            else:
-                ha = 'center'
-                rotation_mode = 'default'
-            ax.set_xticks(np.arange(len(feature_names)))
-            ax.set_xticklabels(feature_names, rotation=label_rotation, ha=ha,
-                               rotation_mode=rotation_mode,
-                               fontsize=x_axis_label_size)
-
-            # Axis labels and ticks.
-            ax.set_ylabel('SAGE values', fontsize=y_axis_label_size)
-            ax.set_xlabel('')
-            ax.tick_params(axis='y', labelsize=tick_size)
-        else:
-            raise ValueError('orientation must be horizontal or vertical')
-
-        ax.set_title(title, fontsize=title_size)
-        plt.tight_layout()
-        return
 
 
 class ImportanceTracker:
@@ -149,13 +33,13 @@ class ImportanceTracker:
 
 
 class MSELoss:
-    '''MSE loss that always sums over non-batch dimensions.'''
+    '''MSE loss that sums over non-batch dimensions.'''
     def __init__(self, reduction='mean'):
         assert reduction in ('none', 'mean')
         self.reduction = reduction
 
     def __call__(self, pred, target):
-        # Add dimension to tail of pred, if necessary.
+        # Add dimension if necessary.
         if target.shape[-1] == 1 and len(target.shape) - len(pred.shape) == 1:
             pred = np.expand_dims(pred, -1)
         loss = np.sum(
@@ -167,20 +51,22 @@ class MSELoss:
 
 
 class CrossEntropyLoss:
-    # TODO infer whether binary classification based on output size.
-    # If (n_samples,) then it's binary. Labels must be (0, 1) or (-1, 1).
-
-    # TODO if (n_samples, k) then it may still be binary, but we don't care.
-    # Verify that classes are 0, 1, 2, ..., k.
-
-    # TODO then do this again for accuracy.
-
     '''Cross entropy loss that expects probabilities.'''
     def __init__(self, reduction='mean'):
         assert reduction in ('none', 'mean')
         self.reduction = reduction
 
-    def __call__(self, pred, target):
+    def __call__(self, pred, target, eps=1e-12):
+        # Clip.
+        pred = np.clip(pred, eps, 1 - eps)
+
+        # Add a dimension if necessary.
+        if pred.ndim == 1:
+            pred = pred[:, np.newaxis]
+        if pred.shape[1] == 1:
+            pred = np.append(1 - pred, pred, axis=1)
+
+        # Calculate loss.
         loss = - np.log(pred[np.arange(len(pred)), target])
         if self.reduction == 'mean':
             return np.mean(loss)
@@ -188,131 +74,12 @@ class CrossEntropyLoss:
             return loss
 
 
-class BCELoss:
-    '''Binary cross entropy loss that expects probabilities.'''
-    def __init__(self, reduction='mean'):
-        assert reduction in ('none', 'mean')
-        self.reduction = reduction
-
-    def __call__(self, pred, target):
-        loss = - target * np.log(pred) - (1 - target) * np.log(1 - pred)
-        if self.reduction == 'mean':
-            return np.mean(loss)
-        else:
-            return loss
-
-
-class Accuracy:
-    '''0-1 loss.'''
-    def __init__(self, reduction='mean'):
-        assert reduction in ('none', 'mean')
-        self.reduction = reduction
-
-    def __call__(self, pred, target):
-        acc = (np.argmax(pred, axis=1) == target).astype(float)
-        if self.reduction == 'mean':
-            return np.mean(acc)
-        else:
-            return acc
-
-
-class NegAccuracy:
-    '''Negative 0-1 loss.'''
-    def __init__(self, reduction='mean'):
-        assert reduction in ('none', 'mean')
-        self.reduction = reduction
-
-    def __call__(self, pred, target):
-        neg_acc = - (np.argmax(pred, axis=1) == target).astype(float)
-        if self.reduction == 'mean':
-            return np.mean(neg_acc)
-        else:
-            return neg_acc
-
-
-class BinaryAccuracy:
-    '''0-1 loss for binary classifier.'''
-    def __init__(self, reduction='mean'):
-        assert reduction in ('none', 'mean')
-        self.reduction = reduction
-
-    def __call__(self, pred, target):
-        acc = ((pred > 0.5) == target).astype(float)
-        if self.reduction == 'mean':
-            return np.mean(acc)
-        else:
-            return acc
-
-
-class NegBinaryAccuracy:
-    '''Negative 0-1 loss for binary classifier.'''
-    def __init__(self, reduction='mean'):
-        assert reduction in ('none', 'mean')
-        self.reduction = reduction
-
-    def __call__(self, pred, target):
-        neg_acc = - ((pred > 0.5) == target).astype(float)
-        if self.reduction == 'mean':
-            return np.mean(neg_acc)
-        else:
-            return neg_acc
-
-
-class ReferenceImputer:
-    '''
-    Impute features using reference values.
-
-    Args:
-      reference: the reference value for replacing missing features.
-    '''
-    def __init__(self, reference):
-        self.reference = reference
-        self.samples = 1
-
-    def __call__(self, x, S):
-        return S * x + (1 - S) * self.reference
-
-
-class MarginalImputer:
-    '''
-    Impute features using a draw from the joint marginal.
-
-    Args:
-      data: np.ndarray of size (samples, dimensions) representing the data
-        distribution.
-      samples: number of samples to draw from marginal distribution.
-    '''
-    def __init__(self, data, samples):
-        self.data = data
-        self.samples = samples
-        self.N = len(data)
-        self.x_addr = None
-        self.x_repeat = None
-
-    def __call__(self, x, S):
-        if self.x_addr == id(x):
-            x = self.x_repeat
-        else:
-            self.x_addr = id(x)
-            x = np.repeat(x, self.samples, 0)
-            self.x_repeat = x
-        S = np.repeat(S, self.samples, 0)
-        samples = self.data[np.random.choice(self.N, len(x), replace=True)]
-        return S * x + (1 - S) * samples
-
-
 def get_loss(loss, reduction='mean'):
     '''Get loss function by name.'''
     if loss == 'cross entropy':
         loss_fn = CrossEntropyLoss(reduction=reduction)
-    elif loss == 'binary cross entropy':
-        loss_fn = BCELoss(reduction=reduction)
     elif loss == 'mse':
         loss_fn = MSELoss(reduction=reduction)
-    elif loss == 'accuracy':
-        loss_fn = NegAccuracy(reduction=reduction)
-    elif loss == 'binary accuracy':
-        loss_fn = NegBinaryAccuracy(reduction=reduction)
     else:
         raise ValueError('unsupported loss: {}'.format(loss))
     return loss_fn
@@ -325,7 +92,7 @@ def sample_subset_feature(input_size, n, ind):
     the subset is sampled by 1) sampling the number of features to be included
     from a uniform distribution, and 2) sampling the features to be included.
     '''
-    S = np.zeros((n, input_size), dtype=np.float32)
+    S = np.zeros((n, input_size), dtype=bool)
     choices = list(range(input_size))
     del choices[ind]
     for row in S:
@@ -335,48 +102,116 @@ def sample_subset_feature(input_size, n, ind):
     return S
 
 
-def verify_model_data(model, x, y, loss, mbsize):
+def verify_model_data(model, X, Y, loss, mbsize):
     '''Ensure that model and data are set up properly.'''
-    # Verify that model output is compatible with labels.
-    if isinstance(loss, CrossEntropyLoss) or isinstance(loss, NegAccuracy):
-        assert y.shape == (len(x),)
-        probs = model(x[:mbsize])
-        classes = probs.shape[1]
-        assert classes > 1, 'require multiple outputs for multiclass models'
-        if len(np.setdiff1d(np.unique(y), np.arange(classes))) == 0:
-            # This is the preffered label encoding.
-            pass
-        elif len(np.setdiff1d(np.unique(y), [-1, 1])) == 0:
-            # Set -1s to 0s.
-            y = np.copy(y)
-            y[y == -1] = 0
-        else:
-            raise ValueError('labels for multiclass classification must be '
-                             '(0, 1, ..., c)')
-    elif isinstance(loss, BCELoss) or isinstance(loss, NegBinaryAccuracy):
-        assert y.shape == (len(x),)
-        if len(np.setdiff1d(np.unique(y), [0, 1])) == 0:
-            # This is the preffered label encoding.
-            pass
-        elif len(np.setdiff1d(np.unique(y), [-1, 1])) == 0:
-            # Set -1s to 0s.
-            y = np.copy(y)
-            y[y == -1] = 0
-        else:
-            raise ValueError('labels for binary classification must be (0, 1) '
-                             'or (-1, 1)')
-
-    # Verify that outputs are probabilities.
     if isinstance(loss, CrossEntropyLoss):
-        probs = model(x[:mbsize])
-        ones = np.sum(probs, axis=-1)
-        if not np.allclose(ones, np.ones(ones.shape)):
-            raise ValueError(
-                'outputs must be valid probabilities for cross entropy loss')
-    elif isinstance(loss, BCELoss):
-        probs = model(x[:mbsize])
-        if not np.all(np.logical_and(0 <= probs, probs <= 1)):
-            raise ValueError(
-                'outputs must be valid probabilities for cross entropy loss')
+        probs = model(X[:mbsize])
+        Y = Y.astype(int)
 
-    return x, y
+        if (probs.ndim == 1) or (probs.shape[1] == 1):
+            # Single probabilities.
+            if Y.shape == (len(X),):
+                pass
+            elif Y.shape == (len(X), 1):
+                Y = Y[:, 0]
+            else:
+                raise ValueError('labels shape is incorrect')
+
+            valid_probs = np.all(np.logical_and(probs >= 0, probs <= 1))
+            unique_labels = np.unique(Y)
+            if np.array_equal(unique_labels, np.array([0, 1])):
+                # This is the preferred labeling.
+                pass
+            elif np.array_equal(unique_labels, np.array([-1, 1])):
+                # Set -1 to 0.
+                Y = Y.copy()
+                Y[Y == -1] = 0
+            else:
+                raise ValueError('labels for binary classification must be '
+                                 '[0, 1] or [-1, 1]')
+
+        elif probs.ndim == 2:
+            # Multiclass output.
+            assert Y.shape == (len(X),)
+            ones = np.sum(probs, axis=1)
+            valid_probs = np.allclose(ones, np.ones(ones.shape))
+
+        else:
+            raise ValueError('predictions array has too many dimensions')
+
+        if not valid_probs:
+            raise ValueError('outputs must be valid probabilities')
+
+    return X, Y
+
+
+def safe_isinstance(obj, class_str):
+    '''Check isinstance without requiring imports.'''
+    if not isinstance(class_str, str):
+        return False
+    module_name, class_name = class_str.rsplit('.', 1)
+    if module_name not in sys.modules:
+        return False
+    module = sys.modules[module_name]
+    class_type = getattr(module, class_name, None)
+    if class_type is None:
+        return False
+    return isinstance(obj, class_type)
+
+
+def model_conversion(model, loss_fn):
+    '''Convert model to callable.'''
+    if safe_isinstance(model, 'sklearn.base.ClassifierMixin'):
+        return lambda x: model.predict_proba(x)
+
+    elif safe_isinstance(model, 'sklearn.base.RegressorMixin'):
+        return lambda x: model.predict(x)
+
+    elif safe_isinstance(model, 'catboost.CatBoostClassifier'):
+        return lambda x: model.predict_proba(x)
+
+    elif safe_isinstance(model, 'catboost.CatBoostRegressor'):
+        return lambda x: model.predict(x)
+
+    elif safe_isinstance(model, 'lightgbm.basic.Booster'):
+        return lambda x: model.predict(x)
+
+    elif safe_isinstance(model, 'xgboost.core.Booster'):
+        import xgboost
+        return lambda x: model.predict(xgboost.DMatrix(x))
+
+    elif safe_isinstance(model, 'torch.nn.Module'):
+        import torch
+        device = next(model.parameters()).device
+
+        if isinstance(loss_fn, CrossEntropyLoss):
+            print('Converting PyTorch classifier, outputs are assumed '
+                  'to be logits')
+
+            def f(x):
+                x = torch.tensor(x, dtype=torch.float32, device=device)
+                out = model(x)
+                if out.dim() == 1:
+                    out = out.sigmoid()
+                elif out.dim() == 2 and out.shape[1] == 1:
+                    out = out.sigmoid()
+                elif out.dim() == 2:
+                    out = out.softmax(dim=1)
+                else:
+                    raise ValueError('predictions are not valid shape')
+                return out.cpu().data.numpy()
+        else:
+            def f(x):
+                x = torch.tensor(x, dtype=torch.float32, device=device)
+                out = model(x)
+                return out.cpu().data.numpy()
+
+        return f
+
+    elif callable(model):
+        # Assume model is compatible function or callable object.
+        return model
+
+    else:
+        raise ValueError('model cannot be converted automatically, '
+                         'sorry! Please convert to a lambda function')
