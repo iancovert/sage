@@ -9,7 +9,9 @@ def estimate_total(model, X, Y, batch_size, loss_fn):
 
     This is used to get a worst-case estimate of the maximum
     SAGE value. It assumes that the prediction given no features is
-    the mean prediction, which is not true for all imputers.
+    the mean prediction. This is not true of all imputers, and it will
+    overestimate the total value in situations where certain features are
+    never held out (which may lead to premature convergence).
     '''
     # Mean loss.
     N = 0
@@ -32,7 +34,8 @@ def estimate_total(model, X, Y, batch_size, loss_fn):
     for i in range(np.ceil(len(X) / batch_size).astype(int)):
         y = Y[i * batch_size:(i + 1) * batch_size]
         n = len(x)
-        pred = mean_pred.repeat(n, *[1 for _ in mean_pred.shape[1:]])
+        # pred = mean_pred.repeat(n, *[1 for _ in mean_pred.shape[1:]])
+        pred = mean_pred.repeat(n, 0)
         _mean_loss = np.mean(loss_fn(pred, y))
         marginal_loss = (N * marginal_loss + n * _mean_loss) / (N + n)
         N += n
@@ -48,15 +51,16 @@ def estimate_holdout_importance(model, X, Y, imputer, batch_size, loss_fn,
     This provides a rough estimate, but the result is only used to
     determine feature ordering.
     '''
-    N, input_size = X.shape
-    holdout_importance = np.zeros(input_size)
-    S = np.ones((batch_size, input_size), dtype=bool)
+    N, _ = X.shape
+    num_features = imputer.num_groups
+    holdout_importance = np.zeros(num_features)
+    S = np.ones((batch_size, num_features), dtype=bool)
 
     if bar:
-        bar = tqdm(total=input_size)
+        bar = tqdm(total=num_features)
 
     # Hold out each feature individually.
-    for i in range(input_size):
+    for i in range(num_features):
         S[:, i] = 0
         loss_list = []
 
@@ -136,7 +140,8 @@ class IteratedSampler:
         Returns: SAGE object.
         '''
         # Verify model.
-        N, input_size = X.shape
+        N, _ = X.shape
+        num_features = self.imputer.num_groups
         X, Y = utils.verify_model_data(self.model, X, Y, self.loss_fn,
                                        batch_size * self.imputer.samples)
 
@@ -144,11 +149,6 @@ class IteratedSampler:
         estimate_convergence = n_samples is None
         if estimate_convergence and verbose:
             print('Estimating convergence time')
-
-        # For detecting convergence.
-        total = estimate_total(
-            self.model, X, Y, batch_size * self.imputer.samples, self.loss_fn)
-        min_max_val = total / input_size
 
         # Possibly force convergence detection.
         if n_samples is None:
@@ -163,22 +163,25 @@ class IteratedSampler:
 
         # Print message explaining parameter choices.
         if verbose:
-            print('batch size = batch * samples = {}'.format(
+            print('Batch size = batch * samples = {}'.format(
                 batch_size * self.imputer.samples))
+
+        # For detecting convergence.
+        print('Estimating total importance')
+        total = estimate_total(
+            self.model, X, Y, batch_size * self.imputer.samples, self.loss_fn)
+        min_max_val = total / num_features
 
         # Feature ordering.
         if optimize_ordering:
             if verbose:
-                print('determining feature ordering')
+                print('Determining feature ordering')
             holdout_importance = estimate_holdout_importance(
                 self.model, X, Y, self.imputer, batch_size, self.loss_fn,
                 ordering_batches, bar)
             ordering = list(np.argsort(holdout_importance)[::-1])
         else:
-            ordering = list(range(input_size))
-
-        # For updating scores.
-        tracker_list = []
+            ordering = list(range(num_features))
 
         # Set up bar.
         n_loops = int(n_samples / batch_size)
@@ -186,9 +189,10 @@ class IteratedSampler:
             if estimate_convergence:
                 bar = tqdm(total=1)
             else:
-                bar = tqdm(total=n_loops * batch_size * input_size)
+                bar = tqdm(total=n_loops * batch_size * num_features)
 
         # Iterated sampling.
+        tracker_list = []
         for i, ind in enumerate(ordering):
             tracker = utils.ImportanceTracker()
             for it in range(n_loops):
@@ -198,7 +202,7 @@ class IteratedSampler:
                 y = Y[mb]
 
                 # Sample subset of features.
-                S = utils.sample_subset_feature(input_size, batch_size, ind)
+                S = utils.sample_subset_feature(num_features, batch_size, ind)
 
                 # Loss with feature excluded.
                 y_hat = self.model(self.imputer(x, S))
@@ -240,7 +244,7 @@ class IteratedSampler:
 
                         # Skip bar ahead.
                         if bar:
-                            bar.n = bar.total * (i + 1) / input_size
+                            bar.n = bar.total * (i + 1) / num_features
                             bar.refresh()
                         break
 
@@ -248,7 +252,7 @@ class IteratedSampler:
                 if bar and estimate_convergence:
                     std_est = ratio * np.sqrt(it + 1)
                     n_est = (std_est / convergence_threshold) ** 2
-                    bar.n = np.around((i + (it + 1) / n_est) / input_size, 4)
+                    bar.n = np.around((i + (it + 1) / n_est) / num_features, 4)
                     bar.refresh()
 
             if verbose:
@@ -262,7 +266,7 @@ class IteratedSampler:
             bar.close()
 
         # Extract SAGE values.
-        reverse_ordering = [ordering.index(ind) for ind in range(input_size)]
+        reverse_ordering = [ordering.index(ind) for ind in range(num_features)]
         values = np.array(
             [tracker_list[ind].values.item() for ind in reverse_ordering])
         std = np.array(

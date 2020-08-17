@@ -52,7 +52,8 @@ class PermutationSampler:
         Returns: SAGE object.
         '''
         # Verify model.
-        N, input_size = X.shape
+        N, _ = X.shape
+        num_features = self.imputer.num_groups
         X, Y = utils.verify_model_data(self.model, X, Y, self.loss_fn,
                                        batch_size * self.imputer.samples)
 
@@ -74,11 +75,8 @@ class PermutationSampler:
 
         # Print message explaining parameter choices.
         if verbose:
-            print('batch size = batch * samples = {}'.format(
+            print('Batch size = batch * samples = {}'.format(
                 batch_size * self.imputer.samples))
-
-        # For updating scores.
-        tracker = utils.ImportanceTracker()
 
         # Set up bar.
         n_loops = int(n_permutations / batch_size)
@@ -86,9 +84,10 @@ class PermutationSampler:
             if estimate_convergence:
                 bar = tqdm(total=1)
             else:
-                bar = tqdm(total=n_loops * batch_size * input_size)
+                bar = tqdm(total=n_loops * batch_size * num_features)
 
         # Permutation sampling.
+        tracker = utils.ImportanceTracker()
         for it in range(n_loops):
             # Sample data.
             mb = np.random.choice(N, batch_size)
@@ -96,8 +95,8 @@ class PermutationSampler:
             y = Y[mb]
 
             # Sample permutations.
-            S = np.zeros((batch_size, input_size), dtype=bool)
-            permutations = np.tile(np.arange(input_size), (batch_size, 1))
+            S = np.zeros((batch_size, num_features), dtype=bool)
+            permutations = np.tile(np.arange(num_features), (batch_size, 1))
             for i in range(batch_size):
                 np.random.shuffle(permutations[i])
 
@@ -109,9 +108,9 @@ class PermutationSampler:
 
             # Setup.
             arange = np.arange(batch_size)
-            scores = np.zeros((batch_size, input_size))
+            scores = np.zeros((batch_size, num_features))
 
-            for i in range(input_size):
+            for i in range(num_features):
                 # Add next feature.
                 inds = permutations[:, i]
                 S[arange, inds] = 1

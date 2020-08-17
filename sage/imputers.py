@@ -9,8 +9,11 @@ class ReferenceImputer:
       reference: the reference value for replacing missing features.
     '''
     def __init__(self, reference):
+        if reference.ndim > 1:
+            raise ValueError('reference must have shape (input_size,)')
         self.reference = reference
         self.samples = 1
+        self.num_groups = reference.shape[-1]
 
     def __call__(self, x, S):
         x_ = x.copy()
@@ -32,6 +35,7 @@ class MarginalImputer:
         self.N = len(data)
         self.x_addr = None
         self.x_repeat = None
+        self.num_groups = data.shape[1]
 
     def __call__(self, x, S):
         if self.x_addr == id(x):
