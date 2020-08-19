@@ -52,7 +52,7 @@ sage_values.plot(feature_names)
 The result will look something like this.
 
 <p align="center">
-  <img width="500" src="https://raw.githubusercontent.com/iancovert/sage/master/docs/bike.png"/>
+  <img width="500" src="https://raw.githubusercontent.com/iancovert/sage/master/docs/bike.svg"/>
 </p>
 
 **Convergence.** Convergence is determined automatically based on the size of each value's confidence interval, and a progress bar will display the estimated time until convergence.
@@ -63,7 +63,12 @@ The result will look something like this.
 
 ## Examples
 
-See [bike.ipynb](https://github.com/iancovert/sage/blob/master/bike.ipynb) for an example using XGBoost, [credit.ipynb](https://github.com/iancovert/sage/blob/master/credit.ipynb) for an example using CatBoost, and [airbnb.ipynb](https://github.com/iancovert/sage/blob/master/airbnb.ipynb) for an example using a PyTorch MLP.
+<!-- See [bike.ipynb](https://github.com/iancovert/sage/blob/master/bike.ipynb) for an example using XGBoost, [credit.ipynb](https://github.com/iancovert/sage/blob/master/credit.ipynb) for an example using CatBoost, and [airbnb.ipynb](https://github.com/iancovert/sage/blob/master/airbnb.ipynb) for an example using a PyTorch MLP. -->
+
+- [Bike](https://github.com/iancovert/sage/blob/master/notebooks/bike.ipynb) is a simple example using XGBoost, and [Credit]() is a simple example using CatBoost.
+- [Airbnb](https://github.com/iancovert/sage/blob/master/notebooks/airbnb.ipynb) shows an example of calculating SAGE values with grouped features (using a PyTorch MLP).
+- [Bank](https://github.com/iancovert/sage/blob/master/notebooks/airbnb.ipynb) shows a model monitoring example that uses SAGE to identify features that hurt the model's performance (using CatBoost).
+- [MNIST](https://github.com/iancovert/sage/blob/master/notebooks/mnist.ipynb) shows several strategies to accelerate convergence for datasets with many features (feature grouping, different imputing setups).
 
 ## Authors
 

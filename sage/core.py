@@ -1,6 +1,6 @@
 import pickle
 import numpy as np
-import matplotlib.pyplot as plt
+from sage import plotting
 
 
 class SAGE:
@@ -10,18 +10,18 @@ class SAGE:
         self.std = std
 
     def plot(self,
-             feature_names,
+             feature_names=None,
              sort_features=True,
              max_features=np.inf,
-             figsize=(10, 7),
              orientation='horizontal',
              error_bars=True,
              color='tab:green',
              title='Feature Importance',
              title_size=20,
              tick_size=16,
+             tick_rotation=None,
              label_size=16,
-             label_rotation=None,
+             figsize=(10, 7),
              return_fig=False):
         '''
         Plot SAGE values.
@@ -30,102 +30,65 @@ class SAGE:
           feature_names: list of feature names.
           sort_features: whether to sort features by their SAGE values.
           max_features: number of features to display.
-          fig: matplotlib figure (optional).
-          figsize: figure size (if fig is None).
           orientation: horizontal (default) or vertical.
           error_bars: whether to include standard deviation error bars.
           color: bar chart color.
           title: plot title.
           title_size: font size for title.
           tick_size: font size for feature names and numerical values.
+          tick_rotation: tick rotation for feature names (vertical plots only).
           label_size: font size for label.
-          label_rotation: label rotation (for vertical plots only).
+          figsize: figure size (if fig is None).
           return_fig: whether to return matplotlib figure object.
         '''
-        fig = plt.figure(figsize=figsize)
-        ax = fig.gca()
+        return plotting.plot(
+            self, feature_names, sort_features, max_features, orientation,
+            error_bars, color, title, title_size, tick_size, tick_rotation,
+            label_size, figsize, return_fig)
 
-        # Sort features if necessary.
-        if len(feature_names) > max_features:
-            sort_features = True
-        values = self.values
-        std = self.std
-        if sort_features:
-            argsort = np.argsort(values)[::-1]
-            values = values[argsort]
-            std = std[argsort]
-            feature_names = np.array(feature_names)[argsort]
+    def comparison(self,
+                   other_values,
+                   comparison_names=None,
+                   feature_names=None,
+                   sort_features=True,
+                   max_features=np.inf,
+                   orientation='vertical',
+                   error_bars=True,
+                   colors=None,
+                   title='Feature Importance Comparison',
+                   title_size=20,
+                   tick_size=16,
+                   tick_rotation=None,
+                   label_size=16,
+                   legend_loc=None,
+                   figsize=(10, 7),
+                   return_fig=False):
+        '''
+        Plot comparison with another set of SAGE values.
 
-        # Remove extra features if necessary.
-        if len(feature_names) > max_features:
-            feature_names = list(feature_names[:max_features]) + ['Remaining']
-            values = (list(values[:max_features])
-                      + [np.sum(values[max_features:])])
-            std = (list(std[:max_features])
-                   + [np.sum(std[max_features:] ** 2) ** 0.5])
-
-        # Make plot.
-        if orientation == 'horizontal':
-            # Bar chart.
-            if error_bars:
-                ax.barh(np.arange(len(feature_names))[::-1], values,
-                        color=color, xerr=std)
-            else:
-                ax.barh(np.arange(len(feature_names))[::-1], values,
-                        color=color)
-
-            # Feature labels.
-            if label_rotation is not None:
-                raise ValueError('rotation not supported for horizontal charts')
-            ax.set_yticks(np.arange(len(feature_names))[::-1])
-            ax.set_yticklabels(feature_names, fontsize=label_size)
-
-            # Axis labels and ticks.
-            ax.set_ylabel('')
-            ax.set_xlabel('SAGE value', fontsize=label_size)
-            ax.tick_params(axis='x', labelsize=tick_size)
-
-        elif orientation == 'vertical':
-            # Bar chart.
-            if error_bars:
-                ax.bar(np.arange(len(feature_names)), values, color=color,
-                       yerr=std)
-            else:
-                ax.bar(np.arange(len(feature_names)), values, color=color)
-
-            # Feature labels.
-            if label_rotation is None:
-                label_rotation = 90
-            if label_rotation < 90:
-                ha = 'right'
-                rotation_mode = 'anchor'
-            else:
-                ha = 'center'
-                rotation_mode = 'default'
-            ax.set_xticks(np.arange(len(feature_names)))
-            ax.set_xticklabels(feature_names, rotation=label_rotation, ha=ha,
-                               rotation_mode=rotation_mode,
-                               fontsize=label_size)
-
-            # Axis labels and ticks.
-            ax.set_ylabel('SAGE value', fontsize=label_size)
-            ax.set_xlabel('')
-            ax.tick_params(axis='y', labelsize=tick_size)
-
-        else:
-            raise ValueError('orientation must be horizontal or vertical')
-
-        # Remove spines.
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
-
-        ax.set_title(title, fontsize=title_size)
-        plt.tight_layout()
-
-        if return_fig:
-            return fig
-        else:
-            return
+        Args:
+          other_values: another SAGE values object.
+          comparison_names: tuple of names for each SAGE value object.
+          feature_names: list of feature names.
+          sort_features: whether to sort features by their SAGE values.
+          max_features: number of features to display.
+          orientation: horizontal (default) or vertical.
+          error_bars: whether to include standard deviation error bars.
+          colors: colors for each set of SAGE values.
+          title: plot title.
+          title_size: font size for title.
+          tick_size: font size for feature names and numerical values.
+          tick_rotation: tick rotation for feature names (vertical plots only).
+          label_size: font size for label.
+          legend_loc: legend location.
+          figsize: figure size (if fig is None).
+          return_fig: whether to return matplotlib figure object.
+        '''
+        return plotting.comparison_plot(
+            (self, other_values), comparison_names, feature_names,
+            sort_features, max_features, orientation, error_bars, colors, title,
+            title_size, tick_size, tick_rotation, label_size, legend_loc,
+            figsize, return_fig)
 
     def save(self, filename):
         '''Save SAGE object.'''

@@ -224,7 +224,7 @@ class IteratedSampler:
 
                 # Calculate progress.
                 std = tracker.std
-                max_val = max(min_max_val, tracker.values.item())
+                max_val = max(min_max_val, np.abs(tracker.values.item()))
                 ratio = std / max_val
 
                 # Print progress message.
@@ -260,7 +260,7 @@ class IteratedSampler:
             tracker_list.append(tracker)
 
             # Adjust min max value.
-            min_max_val = max(min_max_val, tracker.values.item())
+            min_max_val = max(min_max_val, np.abs(tracker.values.item()))
 
         if bar:
             bar.close()

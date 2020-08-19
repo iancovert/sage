@@ -132,7 +132,7 @@ class PermutationSampler:
 
             # Calculate progress.
             std = np.max(tracker.std)
-            val = np.max(tracker.values)
+            val = np.max(np.abs(tracker.values))
             ratio = std / val
 
             # Print progress message.
