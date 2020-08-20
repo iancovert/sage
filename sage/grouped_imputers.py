@@ -24,7 +24,7 @@ def finalize_groups(groups, input_size, remaining_features):
 
 class GroupedReferenceImputer:
     '''
-    Impute features using reference values.
+    Impute grouped features using reference values.
 
     Args:
       reference: the reference value for replacing missing features.
@@ -74,7 +74,8 @@ class GroupedReferenceImputer:
 
 class GroupedMarginalImputer:
     '''
-    Impute features using a draw from the joint marginal.
+    Impute grouped features using either a fixed set of background examples, or
+    a sampled set of background examples.
 
     Args:
       data: np.ndarray of size (samples, dimensions) representing the data
@@ -103,10 +104,10 @@ class GroupedMarginalImputer:
             self.data_tiled = data
 
         # Check if there are too many samples.
-        if self.samples > 512:
+        if samples > 512:
             warnings.warn('using {} background samples will make estimators '
                           'run slowly, recommendation is to use <= 512'.format(
-                            self.samples), RuntimeWarning)
+                            samples), RuntimeWarning)
 
         # Verify that groups are non-overlapping.
         input_size = data.shape[1]

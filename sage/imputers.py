@@ -34,7 +34,8 @@ class ReferenceImputer:
 
 class MarginalImputer:
     '''
-    Impute features using a fixed background distribution.
+    Impute features using either a fixed set of background examples, or a
+    sampled set of background examples.
 
     Args:
       data: np.ndarray of data points representing the background distribution.
@@ -65,7 +66,7 @@ class MarginalImputer:
         if samples > 512:
             warnings.warn('using {} background samples will make estimators '
                           'run slowly, recommendation is to use <= 512'.format(
-                            self), RuntimeWarning)
+                            samples), RuntimeWarning)
 
     def __call__(self, x, S):
         # Repeat x.
