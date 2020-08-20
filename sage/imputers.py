@@ -34,60 +34,38 @@ class ReferenceImputer:
 
 class MarginalImputer:
     '''
-    Impute features using a draw from the joint marginal.
-
-    Args:
-      data: np.ndarray of size (samples, dimensions) representing the data
-        distribution.
-      samples: number of samples to draw from marginal distribution.
-    '''
-    def __init__(self, data, samples):
-        self.data = data
-        self.samples = samples
-        self.N = len(data)
-        self.x_addr = None
-        self.x_repeat = None
-        self.num_groups = data.shape[1]
-
-        if samples > 512:
-            warnings.warn('using {} samples may make estimators run '
-                          'slowly'.format(samples), RuntimeWarning)
-
-    def __call__(self, x, S):
-        # Repeat x.
-        if self.x_addr == id(x):
-            x = self.x_repeat
-        else:
-            self.x_addr = id(x)
-            x = np.repeat(x, self.samples, 0)
-            self.x_repeat = x
-        S = np.repeat(S, self.samples, 0)
-        samples = self.data[np.random.choice(self.N, len(x), replace=True)]
-        x_ = x.copy()
-        x_[~S] = samples[~S]
-        return x_
-
-
-class FixedMarginalImputer:
-    '''
     Impute features using a fixed background distribution.
 
     Args:
-      data: np.ndarray of size (samples, dimensions) representing the
-        background distribution.
+      data: np.ndarray of data points representing the background distribution.
+      samples: number of samples to draw (if None, then all samples are used.)
     '''
-    def __init__(self, data):
+    def __init__(self, data, samples=None):
         self.data = data
         self.N = len(data)
-        self.samples = self.N
-        self.x_addr = None
-        self.x_repeat = None
-        self.data_tiled = data
+
+        if samples is None:
+            samples = self.N
+        elif not samples < self.N:
+            raise ValueError('The specified number of samples ({}) for '
+                             'MarginalImputer should be less than the length '
+                             'of the dataset ({}). Either use a smaller number '
+                             'of samples, or set samples=None to use all '
+                             'examples'.format(samples, self.N))
+        self.samples = samples
         self.num_groups = data.shape[1]
 
-        if self.N > 512:
-            warnings.warn('using {} background samples may make estimators run '
-                          'slowly'.format(self.N), RuntimeWarning)
+        # For saving time during imputation.
+        self.x_addr = None
+        self.x_repeat = None
+        if samples == self.N:
+            self.data_tiled = data
+
+        # Check if there are too many samples.
+        if samples > 512:
+            warnings.warn('using {} background samples will make estimators '
+                          'run slowly, recommendation is to use <= 512'.format(
+                            self), RuntimeWarning)
 
     def __call__(self, x, S):
         # Repeat x.
@@ -96,14 +74,21 @@ class FixedMarginalImputer:
             x = self.x_repeat
         else:
             self.x_addr = id(x)
-            x = np.repeat(x, self.N, 0)
+            x = x.repeat(self.samples, 0)
             self.x_repeat = x
 
-        # Repeat data.
-        if len(self.data_tiled) != (self.N * n):
-            self.data_tiled = np.tile(self.data, (n, 1))
+        # Prepare background samples.
+        if self.samples == self.N:
+            # Repeat fixed background samples.
+            if len(self.data_tiled) != (self.samples * n):
+                self.data_tiled = np.tile(self.data, (n, 1))
+            samples = self.data_tiled
+        else:
+            # Draw samples from the marginal distribution.
+            samples = self.data[np.random.choice(self.N, len(x), replace=True)]
 
-        S = np.repeat(S, self.samples, 0)
+        # Replace specified features.
+        S = S.repeat(self.samples, 0)
         x_ = x.copy()
-        x_[~S] = self.data_tiled[~S]
+        x_[~S] = samples[~S]
         return x_
