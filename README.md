@@ -42,7 +42,7 @@ model = ...
 imputer = sage.MarginalImputer(x[:512])
 
 # Set up sampler
-sampler = sage.PermutationSampler(model, imputer, 'cross entropy')
+sampler = sage.PermutationSampler(model, imputer, 'mse')
 
 # Calculate SAGE values
 sage_values = sampler(x, y)
@@ -65,7 +65,7 @@ The result will look something like this.
 
 - [Bike](https://github.com/iancovert/sage/blob/master/notebooks/bike.ipynb) is a simple example using XGBoost, and [Credit](https://github.com/iancovert/sage/blob/master/notebooks/credit.ipynb) is a simple example using CatBoost. Both notebooks show how to calculate SAGE values and Shapley Net Effects (an approximation when no labels are available).
 - [Airbnb](https://github.com/iancovert/sage/blob/master/notebooks/airbnb.ipynb) shows an example of calculating SAGE values with grouped features (using a PyTorch MLP).
-- [Bank](https://github.com/iancovert/sage/blob/master/notebooks/airbnb.ipynb) shows a model monitoring example that uses SAGE to identify features that hurt the model's performance (using CatBoost).
+- [Bank](https://github.com/iancovert/sage/blob/master/notebooks/bank.ipynb) shows a model monitoring example that uses SAGE to identify features that hurt the model's performance (using CatBoost).
 - [MNIST](https://github.com/iancovert/sage/blob/master/notebooks/mnist.ipynb) shows several strategies to accelerate convergence for datasets with many features (feature grouping, different imputing setups).
 
 ## Authors
