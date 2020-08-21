@@ -2,6 +2,135 @@ import sys
 import numpy as np
 
 
+def model_conversion(model, loss_fn):
+    '''Convert model to callable.'''
+    if safe_isinstance(model, 'sklearn.base.ClassifierMixin'):
+        return lambda x: model.predict_proba(x)
+
+    elif safe_isinstance(model, 'sklearn.base.RegressorMixin'):
+        return lambda x: model.predict(x)
+
+    elif safe_isinstance(model, 'catboost.CatBoostClassifier'):
+        return lambda x: model.predict_proba(x)
+
+    elif safe_isinstance(model, 'catboost.CatBoostRegressor'):
+        return lambda x: model.predict(x)
+
+    elif safe_isinstance(model, 'lightgbm.basic.Booster'):
+        return lambda x: model.predict(x)
+
+    elif safe_isinstance(model, 'xgboost.core.Booster'):
+        import xgboost
+        return lambda x: model.predict(xgboost.DMatrix(x))
+
+    elif safe_isinstance(model, 'torch.nn.Module'):
+        import torch
+        device = next(model.parameters()).device
+
+        if isinstance(loss_fn, CrossEntropyLoss):
+            print('Converting PyTorch classifier, outputs are assumed '
+                  'to be logits')
+
+            def f(x):
+                x = torch.tensor(x, dtype=torch.float32, device=device)
+                out = model(x)
+                if out.dim() == 1:
+                    out = out.sigmoid()
+                elif out.dim() == 2 and out.shape[1] == 1:
+                    out = out.sigmoid()
+                elif out.dim() == 2:
+                    out = out.softmax(dim=1)
+                else:
+                    raise ValueError('predictions are not valid shape')
+                return out.cpu().data.numpy()
+        else:
+            def f(x):
+                x = torch.tensor(x, dtype=torch.float32, device=device)
+                out = model(x)
+                return out.cpu().data.numpy()
+
+        return f
+
+    elif callable(model):
+        # Assume model is compatible function or callable object.
+        return model
+
+    else:
+        raise ValueError('model cannot be converted automatically, '
+                         'please convert to a lambda function')
+
+
+def dataset_output(model, X, batch_size):
+    '''Get model output for entire dataset.'''
+    Y = []
+    for i in range(int(np.ceil(len(X) / batch_size))):
+        x = X[i*batch_size:(i+1)*batch_size]
+        Y.append(model(x))
+    return np.concatenate(Y)
+
+
+def verify_model_data(model, X, Y, loss, batch_size):
+    '''Ensure that model and data are set up properly.'''
+    check_labels = True
+    if Y is None:
+        # Use the model output (Shapley Effects, not SAGE).
+        print('Using model output to calculate sensitivity')
+        check_labels = False
+        Y = dataset_output(model, X, batch_size)
+
+        # Fix output shape for classification tasks.
+        if isinstance(loss, CrossEntropyLoss):
+            if Y.shape == (len(X),):
+                Y = Y[:, np.newaxis]
+            if Y.shape[1] == 1:
+                Y = np.concatenate([1 - Y, Y], axis=1)
+
+    if isinstance(loss, CrossEntropyLoss) and check_labels:
+        probs = model(X[:batch_size])
+        Y = Y.astype(int)
+
+        # Check labels shape.
+        if Y.shape == (len(X),):
+            # This is the preferred shape.
+            pass
+        elif Y.shape == (len(X), 1):
+            Y = Y[:, 0]
+        else:
+            raise ValueError('labels shape should be (batch,) or (batch, 1)'
+                             ' for binary classification')
+
+        if (probs.ndim == 1) or (probs.shape[1] == 1):
+            # Check label encoding.
+            unique_labels = np.unique(Y)
+            if np.array_equal(unique_labels, np.array([0, 1])):
+                # This is the preferred labeling.
+                pass
+            elif np.array_equal(unique_labels, np.array([-1, 1])):
+                # Set -1 to 0.
+                Y = Y.copy()
+                Y[Y == -1] = 0
+            else:
+                raise ValueError('labels for binary classification must be '
+                                 '[0, 1] or [-1, 1]')
+
+            # Check for valid probability outputs.
+            valid_probs = np.all(np.logical_and(probs >= 0, probs <= 1))
+
+        elif probs.ndim == 2:
+            # Multiclass output, check for valid probability outputs.
+            valid_probs = np.all(np.logical_and(probs >= 0, probs <= 1))
+            ones = np.sum(probs, axis=1)
+            valid_probs = valid_probs and np.allclose(ones, np.ones(ones.shape))
+
+        else:
+            raise ValueError('predictions array has too many dimensions')
+
+        if not valid_probs:
+            raise ValueError('model outputs are not valid probabilities')
+
+    return X, Y
+
+
 class ImportanceTracker:
     '''For tracking feature importance using a dynamic average.'''
     def __init__(self):
@@ -60,14 +189,22 @@ class CrossEntropyLoss:
         # Clip.
         pred = np.clip(pred, eps, 1 - eps)
 
-        # Add a dimension if necessary.
+        # Add a dimension to prediction probabilities if necessary.
         if pred.ndim == 1:
             pred = pred[:, np.newaxis]
         if pred.shape[1] == 1:
             pred = np.append(1 - pred, pred, axis=1)
 
         # Calculate loss.
-        loss = - np.log(pred[np.arange(len(pred)), target])
+        if target.ndim == 1:
+            # Class labels.
+            loss = - np.log(pred[np.arange(len(pred)), target])
+        elif target.ndim == 2:
+            # Probabilistic labels.
+            loss = - np.sum(target * np.log(pred), axis=1)
+        else:
+            raise ValueError('incorrect labels shape for cross entropy loss')
+
         if self.reduction == 'mean':
             return np.mean(loss)
         else:
@@ -102,49 +239,6 @@ def sample_subset_feature(input_size, n, ind):
     return S
 
 
-def verify_model_data(model, X, Y, loss, mbsize):
-    '''Ensure that model and data are set up properly.'''
-    if isinstance(loss, CrossEntropyLoss):
-        probs = model(X[:mbsize])
-        Y = Y.astype(int)
-
-        if (probs.ndim == 1) or (probs.shape[1] == 1):
-            # Single probabilities.
-            if Y.shape == (len(X),):
-                pass
-            elif Y.shape == (len(X), 1):
-                Y = Y[:, 0]
-            else:
-                raise ValueError('labels shape is incorrect')
-
-            valid_probs = np.all(np.logical_and(probs >= 0, probs <= 1))
-            unique_labels = np.unique(Y)
-            if np.array_equal(unique_labels, np.array([0, 1])):
-                # This is the preferred labeling.
-                pass
-            elif np.array_equal(unique_labels, np.array([-1, 1])):
-                # Set -1 to 0.
-                Y = Y.copy()
-                Y[Y == -1] = 0
-            else:
-                raise ValueError('labels for binary classification must be '
-                                 '[0, 1] or [-1, 1]')
-
-        elif probs.ndim == 2:
-            # Multiclass output.
-            assert Y.shape == (len(X),)
-            ones = np.sum(probs, axis=1)
-            valid_probs = np.allclose(ones, np.ones(ones.shape))
-
-        else:
-            raise ValueError('predictions array has too many dimensions')
-
-        if not valid_probs:
-            raise ValueError('outputs must be valid probabilities')
-
-    return X, Y
-
-
 def safe_isinstance(obj, class_str):
     '''Check isinstance without requiring imports.'''
     if not isinstance(class_str, str):
@@ -157,61 +251,3 @@ def safe_isinstance(obj, class_str):
     if class_type is None:
         return False
     return isinstance(obj, class_type)
-
-
-def model_conversion(model, loss_fn):
-    '''Convert model to callable.'''
-    if safe_isinstance(model, 'sklearn.base.ClassifierMixin'):
-        return lambda x: model.predict_proba(x)
-
-    elif safe_isinstance(model, 'sklearn.base.RegressorMixin'):
-        return lambda x: model.predict(x)
-
-    elif safe_isinstance(model, 'catboost.CatBoostClassifier'):
-        return lambda x: model.predict_proba(x)
-
-    elif safe_isinstance(model, 'catboost.CatBoostRegressor'):
-        return lambda x: model.predict(x)
-
-    elif safe_isinstance(model, 'lightgbm.basic.Booster'):
-        return lambda x: model.predict(x)
-
-    elif safe_isinstance(model, 'xgboost.core.Booster'):
-        import xgboost
-        return lambda x: model.predict(xgboost.DMatrix(x))
-
-    elif safe_isinstance(model, 'torch.nn.Module'):
-        import torch
-        device = next(model.parameters()).device
-
-        if isinstance(loss_fn, CrossEntropyLoss):
-            print('Converting PyTorch classifier, outputs are assumed '
-                  'to be logits')
-
-            def f(x):
-                x = torch.tensor(x, dtype=torch.float32, device=device)
-                out = model(x)
-                if out.dim() == 1:
-                    out = out.sigmoid()
-                elif out.dim() == 2 and out.shape[1] == 1:
-                    out = out.sigmoid()
-                elif out.dim() == 2:
-                    out = out.softmax(dim=1)
-                else:
-                    raise ValueError('predictions are not valid shape')
-                return out.cpu().data.numpy()
-        else:
-            def f(x):
-                x = torch.tensor(x, dtype=torch.float32, device=device)
-                out = model(x)
-                return out.cpu().data.numpy()
-
-        return f
-
-    elif callable(model):
-        # Assume model is compatible function or callable object.
-        return model
-
-    else:
-        raise ValueError('model cannot be converted automatically, '
-                         'sorry! Please convert to a lambda function')

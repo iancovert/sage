@@ -105,7 +105,7 @@ class IteratedSampler:
 
     def __call__(self,
                  X,
-                 Y,
+                 Y=None,
                  batch_size=512,
                  detect_convergence=True,
                  convergence_threshold=0.05,
@@ -119,7 +119,7 @@ class IteratedSampler:
 
         Args:
           X: input data.
-          Y: target data.
+          Y: target data. If None, model output will be used.
           batch_size: number of examples to be processed in parallel, should be
             set to a large value.
           detect_convergence: whether to stop when approximately converged.

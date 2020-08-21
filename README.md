@@ -39,7 +39,7 @@ feature_names = ...
 model = ...
 
 # Set up imputer to represent the data distribution
-imputer = sage.MarginalImputer(x, samples=512)
+imputer = sage.MarginalImputer(x[:512])
 
 # Set up sampler
 sampler = sage.PermutationSampler(model, imputer, 'cross entropy')
@@ -52,20 +52,18 @@ sage_values.plot(feature_names)
 The result will look something like this.
 
 <p align="center">
-  <img width="500" src="https://raw.githubusercontent.com/iancovert/sage/master/docs/bike.svg"/>
+  <img width="540" src="https://raw.githubusercontent.com/iancovert/sage/master/docs/bike.svg"/>
 </p>
 
 **Convergence.** Convergence is determined automatically based on the size of each value's confidence interval, and a progress bar will display the estimated time until convergence.
 
 **Uncertainty estimation.** Standard deviation confidence intervals are returned for each feature's SAGE value.
 
-**Model conversion.** Our back-end requires that models be converted into a consistent format, and this conversion step is performed automatically for XGBoost, CatBoost, LightGBM, sklearn and PyTorch models. If you're using a different kind of model, you'll need to convert it to a callable function (see [here](https://github.com/iancovert/sage/blob/master/sage/utils.py#L163) for examples).
+**Model conversion.** Our back-end requires that models be converted into a consistent format, and this conversion step is performed automatically for XGBoost, CatBoost, LightGBM, sklearn and PyTorch models. If you're using a different kind of model, you'll need to convert it to a callable function (see [here](https://github.com/iancovert/sage/blob/master/sage/utils.py#L5) for examples).
 
 ## Examples
 
-<!-- See [bike.ipynb](https://github.com/iancovert/sage/blob/master/bike.ipynb) for an example using XGBoost, [credit.ipynb](https://github.com/iancovert/sage/blob/master/credit.ipynb) for an example using CatBoost, and [airbnb.ipynb](https://github.com/iancovert/sage/blob/master/airbnb.ipynb) for an example using a PyTorch MLP. -->
-
-- [Bike](https://github.com/iancovert/sage/blob/master/notebooks/bike.ipynb) is a simple example using XGBoost, and [Credit]() is a simple example using CatBoost.
+- [Bike](https://github.com/iancovert/sage/blob/master/notebooks/bike.ipynb) is a simple example using XGBoost, and [Credit](https://github.com/iancovert/sage/blob/master/notebooks/credit.ipynb) is a simple example using CatBoost. Both notebooks show how to calculate SAGE values and Shapley Net Effects (an approximation when no labels are available).
 - [Airbnb](https://github.com/iancovert/sage/blob/master/notebooks/airbnb.ipynb) shows an example of calculating SAGE values with grouped features (using a PyTorch MLP).
 - [Bank](https://github.com/iancovert/sage/blob/master/notebooks/airbnb.ipynb) shows a model monitoring example that uses SAGE to identify features that hurt the model's performance (using CatBoost).
 - [MNIST](https://github.com/iancovert/sage/blob/master/notebooks/mnist.ipynb) shows several strategies to accelerate convergence for datasets with many features (feature grouping, different imputing setups).
@@ -79,3 +77,4 @@ The result will look something like this.
 ## References
 
 Ian Covert, Scott Lundberg, Su-In Lee. "Understanding Global Feature Contributions Through Additive Importance Measures." *arXiv preprint arXiv:2004.00668*, 2020.
+
