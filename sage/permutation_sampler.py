@@ -46,11 +46,17 @@ class PermutationSampler:
 
         The default behavior is to detect convergence based on the width of the
         SAGE values' confidence intervals. Convergence is defined by the ratio
-        of the maximum standard deviation to the maximum value reaching the
-        specified threshold.
+        of the maximum standard deviation to the gap between the largest and
+        smallest values (or 0).
 
-        Returns: SAGE object.
+        Returns: Explanation object.
         '''
+        # Determine explanation type.
+        if Y is not None:
+            explanation_type = 'SAGE'
+        else:
+            explanation_type = 'Shapley Effects'
+
         # Verify model.
         N, _ = X.shape
         num_features = self.imputer.num_groups
@@ -132,8 +138,10 @@ class PermutationSampler:
 
             # Calculate progress.
             std = np.max(tracker.std)
-            val = np.max(np.abs(tracker.values))
-            ratio = std / val
+            gap = (
+                max(np.max(tracker.values), 0) -
+                min(np.min(tracker.values), 0))
+            ratio = std / gap
 
             # Print progress message.
             if verbose:
@@ -165,4 +173,4 @@ class PermutationSampler:
         if bar:
             bar.close()
 
-        return core.SAGE(tracker.values, tracker.std)
+        return core.Explanation(tracker.values, tracker.std, explanation_type)

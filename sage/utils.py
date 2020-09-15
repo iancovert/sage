@@ -134,27 +134,25 @@ def verify_model_data(model, X, Y, loss, batch_size):
 class ImportanceTracker:
     '''For tracking feature importance using a dynamic average.'''
     def __init__(self):
-        self.first_moment = 0
-        self.second_moment = 0
+        self.mean = 0
+        self.sum_squares = 0
         self.N = 0
 
     def update(self, scores):
-        n = len(scores)
-        first_moment = np.mean(scores, axis=0)
-        second_moment = np.mean(scores ** 2, axis=0)
-        self.first_moment = (
-            (self.N * self.first_moment + n * first_moment) / (n + self.N))
-        self.second_moment = (
-            (self.N * self.second_moment + n * second_moment) / (n + self.N))
-        self.N += n
+        '''Update mean and sum of squares using Welford's algorithm.'''
+        self.N += len(scores)
+        diff = scores - self.mean
+        self.mean += np.sum(diff, axis=0) / self.N
+        diff2 = scores - self.mean
+        self.sum_squares += np.sum(diff * diff2, axis=0)
 
     @property
     def values(self):
-        return self.first_moment
+        return self.mean
 
     @property
     def var(self):
-        return (self.second_moment - self.first_moment ** 2) / self.N
+        return self.sum_squares / (self.N ** 2)
 
     @property
     def std(self):

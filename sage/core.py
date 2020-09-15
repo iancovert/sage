@@ -3,11 +3,12 @@ import numpy as np
 from sage import plotting
 
 
-class SAGE:
+class Explanation:
     '''For storing and plotting SAGE values.'''
-    def __init__(self, values, std):
+    def __init__(self, values, std, explanation_type='SAGE'):
         self.values = values
         self.std = std
+        self.explanation_type = explanation_type
 
     def plot(self,
              feature_names=None,
@@ -91,19 +92,24 @@ class SAGE:
             figsize, return_fig)
 
     def save(self, filename):
-        '''Save SAGE object.'''
+        '''Save Explanation object.'''
         if isinstance(filename, str):
             with open(filename, 'wb') as f:
                 pickle.dump(self, f)
         else:
             raise TypeError('filename must be str')
 
+    def __repr__(self):
+        with np.printoptions(precision=2, threshold=12, floatmode='fixed'):
+            return '{} Explanation(\n  (Mean): {}\n  (Std):  {}\n)'.format(
+                self.explanation_type, self.values, self.std)
+
 
 def load(filename):
-    '''Load SAGE object.'''
+    '''Load Explanation object.'''
     with open(filename, 'rb') as f:
         sage_values = pickle.load(f)
-        if isinstance(sage_values, SAGE):
+        if isinstance(sage_values, Explanation):
             return sage_values
         else:
-            raise ValueError('object is not instance of SAGE class')
+            raise ValueError('object is not instance of Explanation class')

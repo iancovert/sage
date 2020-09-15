@@ -1,5 +1,5 @@
 from sage import utils, core, imputers, grouped_imputers, plotting
-from .core import SAGE, load
+from .core import Explanation, load
 from .plotting import plot, comparison_plot
 from .imputers import ReferenceImputer, MarginalImputer
 from .grouped_imputers import GroupedReferenceImputer, GroupedMarginalImputer

@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def plot(sage_values,
+def plot(explanation,
          feature_names=None,
          sort_features=True,
          max_features=np.inf,
@@ -21,9 +21,9 @@ def plot(sage_values,
     Plot SAGE values.
 
     Args:
-      sage_values: SAGE values object.
+      explanation: Explanation object.
       feature_names: list of feature names.
-      sort_features: whether to sort features by their SAGE values.
+      sort_features: whether to sort features by their values.
       max_features: number of features to display.
       orientation: horizontal (default) or vertical.
       error_bars: whether to include standard deviation error bars.
@@ -39,15 +39,15 @@ def plot(sage_values,
     # Default feature names.
     if feature_names is None:
         feature_names = ['Feature {}'.format(i) for i in
-                         range(len(sage_values.values))]
+                         range(len(explanation.values))]
 
     # Sort features if necessary.
     if len(feature_names) > max_features:
         sort_features = True
 
     # Perform sorting.
-    values = sage_values.values
-    std = sage_values.std
+    values = explanation.values
+    std = explanation.std
     if sort_features:
         argsort = np.argsort(values)[::-1]
         values = values[argsort]
@@ -90,7 +90,8 @@ def plot(sage_values,
 
         # Axis labels and ticks.
         ax.set_ylabel('')
-        ax.set_xlabel('SAGE value', fontsize=label_size)
+        ax.set_xlabel('{} value'.format(explanation.explanation_type),
+                      fontsize=label_size)
         ax.tick_params(axis='x', labelsize=tick_size)
 
     elif orientation == 'vertical':
@@ -113,7 +114,8 @@ def plot(sage_values,
                            fontsize=label_size)
 
         # Axis labels and ticks.
-        ax.set_ylabel('SAGE value', fontsize=label_size)
+        ax.set_ylabel('{} value'.format(explanation.explanation_type),
+                      fontsize=label_size)
         ax.set_xlabel('')
         ax.tick_params(axis='y', labelsize=tick_size)
 
@@ -133,7 +135,7 @@ def plot(sage_values,
         return
 
 
-def comparison_plot(comparison_values,
+def comparison_plot(comparison_explanations,
                     comparison_names=None,
                     feature_names=None,
                     sort_features=True,
@@ -150,11 +152,11 @@ def comparison_plot(comparison_values,
                     figsize=(10, 7),
                     return_fig=False):
     '''
-    Plot comparison between two different SAGE value objects.
+    Plot comparison between two different Explanation objects.
 
     Args:
-      comparison_values: tuple of two SAGE value objects to be compared.
-      comparison_names: tuple of names for each SAGE value object.
+      comparison_explanations: tuple of Explanation objects to be compared.
+      comparison_names: tuple of names for each Explanation object.
       feature_names: list of feature names.
       sort_features: whether to sort features by their SAGE values.
       max_features: number of features to display.
@@ -173,29 +175,36 @@ def comparison_plot(comparison_values,
     # Default feature names.
     if feature_names is None:
         feature_names = ['Feature {}'.format(i) for i in
-                         range(len(comparison_values[0].values))]
+                         range(len(comparison_explanations[0].values))]
 
     # Default comparison names.
-    num_comps = len(comparison_values)
+    num_comps = len(comparison_explanations)
     if num_comps not in (2, 3, 4, 5):
-        raise ValueError('only support comparisons for 2-5 sets of '
-                         'SAGE values')
+        raise ValueError('only support comparisons for 2-5 explanations')
     if comparison_names is None:
-        comparison_names = ['SAGE values {}'.format(i) for i in
-                            range(len(num_comps))]
+        comparison_names = ['Explanation {}'.format(i) for i in
+                            range(num_comps)]
 
     # Default colors.
     if colors is None:
         colors = ['tab:green', 'tab:blue', 'tab:purple',
                   'tab:orange', 'tab:pink'][:num_comps]
 
+    # Determine explanation type.
+    unique_types = np.unique([explanation.explanation_type
+                              for explanation in comparison_explanations])
+    if len(unique_types) == 1:
+        explanation_type = unique_types[0]
+    else:
+        explanation_type = 'Importance'
+
     # Sort features if necessary.
     if len(feature_names) > max_features:
         sort_features = True
 
     # Extract values.
-    values = [sage_values.values for sage_values in comparison_values]
-    std = [sage_values.std for sage_values in comparison_values]
+    values = [sage_values.values for sage_values in comparison_explanations]
+    std = [sage_values.std for sage_values in comparison_explanations]
 
     # Perform sorting.
     if sort_features:
@@ -248,7 +257,7 @@ def comparison_plot(comparison_values,
 
         # Axis labels and ticks.
         ax.set_ylabel('')
-        ax.set_xlabel('SAGE value', fontsize=label_size)
+        ax.set_xlabel('{} value'.format(explanation_type), fontsize=label_size)
         ax.tick_params(axis='x', labelsize=tick_size)
 
     elif orientation == 'vertical':
@@ -275,7 +284,7 @@ def comparison_plot(comparison_values,
                            fontsize=label_size)
 
         # Axis labels and ticks.
-        ax.set_ylabel('SAGE value', fontsize=label_size)
+        ax.set_ylabel('{} value'.format(explanation_type), fontsize=label_size)
         ax.set_xlabel('')
         ax.tick_params(axis='y', labelsize=tick_size)
 

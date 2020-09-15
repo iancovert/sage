@@ -34,7 +34,6 @@ def estimate_total(model, X, Y, batch_size, loss_fn):
     for i in range(np.ceil(len(X) / batch_size).astype(int)):
         y = Y[i * batch_size:(i + 1) * batch_size]
         n = len(x)
-        # pred = mean_pred.repeat(n, *[1 for _ in mean_pred.shape[1:]])
         pred = mean_pred.repeat(n, 0)
         _mean_loss = np.mean(loss_fn(pred, y))
         marginal_loss = (N * marginal_loss + n * _mean_loss) / (N + n)
@@ -58,6 +57,10 @@ def estimate_holdout_importance(model, X, Y, imputer, batch_size, loss_fn,
 
     if bar:
         bar = tqdm(total=num_features)
+
+    # Performance with all features.
+    mb = np.random.choice(N, batch_size)
+    all_loss = np.mean(loss_fn(model(X[mb]), Y[mb]))
 
     # Hold out each feature individually.
     for i in range(num_features):
@@ -83,7 +86,7 @@ def estimate_holdout_importance(model, X, Y, imputer, batch_size, loss_fn,
 
     if bar:
         bar.close()
-    return holdout_importance
+    return holdout_importance - all_loss
 
 
 class IteratedSampler:
@@ -133,12 +136,19 @@ class IteratedSampler:
           bar: display progress bar.
 
         The default behavior is to detect each feature's convergence based on
-        the ratio of its standard deviation to the maximum value. Since the
-        maximum value is unknown, we begin with a worst-case estimate
-        (min_max_val) and update this estimate as more features are examined.
+        the ratio of its standard deviation to the gap between the largest and
+        smallest values (or 0). Since neither value is known initially, we begin
+        we estimates (upper_val, lower_val) and update them as more features are
+        analyzed.
 
-        Returns: SAGE object.
+        Returns: Explanation object.
         '''
+        # Determine explanation type.
+        if Y is not None:
+            explanation_type = 'SAGE'
+        else:
+            explanation_type = 'Shapley Effects'
+
         # Verify model.
         N, _ = X.shape
         num_features = self.imputer.num_groups
@@ -170,7 +180,8 @@ class IteratedSampler:
         print('Estimating total importance')
         total = estimate_total(
             self.model, X, Y, batch_size * self.imputer.samples, self.loss_fn)
-        min_max_val = total / num_features
+        upper_val = max(total / num_features, 0)
+        lower_val = 0
 
         # Feature ordering.
         if optimize_ordering:
@@ -179,7 +190,8 @@ class IteratedSampler:
             holdout_importance = estimate_holdout_importance(
                 self.model, X, Y, self.imputer, batch_size, self.loss_fn,
                 ordering_batches, bar)
-            ordering = list(np.argsort(holdout_importance)[::-1])
+            # Use np.abs in case there are large negative contributors.
+            ordering = list(np.argsort(np.abs(holdout_importance))[::-1])
         else:
             ordering = list(range(num_features))
 
@@ -224,8 +236,10 @@ class IteratedSampler:
 
                 # Calculate progress.
                 std = tracker.std
-                max_val = max(min_max_val, np.abs(tracker.values.item()))
-                ratio = std / max_val
+                gap = (
+                    max(upper_val, tracker.values.item()) -
+                    min(lower_val, tracker.values.item()))
+                ratio = std / gap
 
                 # Print progress message.
                 if verbose:
@@ -260,7 +274,8 @@ class IteratedSampler:
             tracker_list.append(tracker)
 
             # Adjust min max value.
-            min_max_val = max(min_max_val, np.abs(tracker.values.item()))
+            upper_val = max(upper_val, tracker.values.item())
+            lower_val = min(lower_val, tracker.values.item())
 
         if bar:
             bar.close()
@@ -272,4 +287,4 @@ class IteratedSampler:
         std = np.array(
             [tracker_list[ind].std.item() for ind in reverse_ordering])
 
-        return core.SAGE(values, std)
+        return core.Explanation(values, std, explanation_type)
