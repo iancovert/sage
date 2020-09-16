@@ -1,4 +1,4 @@
-from sage import utils, core, imputers, grouped_imputers, plotting
+from sage import utils, core, imputers, grouped_imputers, plotting, datasets
 from .core import Explanation, load
 from .plotting import plot, comparison_plot
 from .imputers import ReferenceImputer, MarginalImputer
