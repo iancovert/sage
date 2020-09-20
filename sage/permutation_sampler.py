@@ -92,6 +92,10 @@ class PermutationSampler:
             else:
                 bar = tqdm(total=n_loops * batch_size * num_features)
 
+        # Setup.
+        arange = np.arange(batch_size)
+        scores = np.zeros((batch_size, num_features))
+
         # Permutation sampling.
         tracker = utils.ImportanceTracker()
         for it in range(n_loops):
@@ -111,10 +115,6 @@ class PermutationSampler:
             y_hat = np.mean(y_hat.reshape(
                 -1, self.imputer.samples, *y_hat.shape[1:]), axis=1)
             prev_loss = self.loss_fn(y_hat, y)
-
-            # Setup.
-            arange = np.arange(batch_size)
-            scores = np.zeros((batch_size, num_features))
 
             for i in range(num_features):
                 # Add next feature.

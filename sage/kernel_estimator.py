@@ -1,0 +1,258 @@
+import numpy as np
+from sage import utils, core
+from tqdm.auto import tqdm
+
+
+def estimate_constraints(model, X, Y, batch_size, loss_fn):
+    '''
+    Estimate the loss when no features are included, and when all features
+    are included. This is used to ensure that the constraints are set properly.
+    '''
+    # Mean loss.
+    N = 0
+    mean_loss = 0
+    mean_pred = 0
+    for i in range(np.ceil(len(X) / batch_size).astype(int)):
+        x = X[i * batch_size:(i + 1) * batch_size]
+        y = Y[i * batch_size:(i + 1) * batch_size]
+        N += len(x)
+        pred = model(x)
+        loss = loss_fn(pred, y)
+        mean_loss += np.sum(loss - mean_loss) / N
+        mean_pred += np.sum(pred - mean_pred, axis=0, keepdims=True) / N
+
+    # Mean loss with no features.
+    N = 0
+    marginal_loss = 0
+    for i in range(np.ceil(len(X) / batch_size).astype(int)):
+        y = Y[i * batch_size:(i + 1) * batch_size]
+        N += len(y)
+        loss = loss_fn(mean_pred.repeat(len(y), 0), y)
+        marginal_loss += np.sum(loss - marginal_loss) / N
+
+    return - marginal_loss, - mean_loss
+
+
+def calculate_result(A, b, c, a0, a1, b_sum_squares, n):
+    '''
+    Calculate the regression coefficients and their uncertainty estimates.
+    The arguments are named based on variable names in this algorithm's
+    derivation.
+    '''
+    # Calculate values.
+    num_features = A.shape[1]
+    A_inv_one = np.linalg.solve(A, np.ones(num_features))
+    A_inv_vec = np.linalg.solve(A, b - c * a0)
+    values = (
+        A_inv_vec -
+        A_inv_one * (np.sum(A_inv_vec) - a1) / np.sum(A_inv_one))
+
+    # Calculate variance.
+    b_sum_squares = 0.5 * (b_sum_squares + b_sum_squares.T)
+    b_cov = b_sum_squares / (n ** 2)
+    cholesky = np.linalg.cholesky(b_cov)
+    L = (
+        np.linalg.solve(A, cholesky) +
+        np.matmul(np.outer(A_inv_one, A_inv_one), cholesky) / np.sum(A_inv_one))
+    beta_cov = np.matmul(L, L.T)
+    var = np.diag(beta_cov)
+    std = var ** 0.5
+
+    return values, std
+
+
+class KernelEstimator:
+    '''
+    Estimate SAGE values by fitting weighted linear model.
+
+    Args:
+      model: callable prediction model.
+      imputer: for imputing held out values.
+      loss: loss function ('mse', 'cross entropy').
+    '''
+    def __init__(self, model, imputer, loss):
+        self.imputer = imputer
+        self.loss_fn = utils.get_loss(loss, reduction='none')
+        self.model = utils.model_conversion(model, self.loss_fn)
+
+    def __call__(self,
+                 X,
+                 Y=None,
+                 batch_size=512,
+                 detect_convergence=True,
+                 convergence_threshold=0.02,
+                 n_samples=None,
+                 verbose=True,
+                 bar=True,
+                 check_every=5):
+        '''
+        Estimate SAGE values by fitting regression model (like KernelSHAP).
+
+        Args:
+          X: input data.
+          Y: target data. If None, model output will be used.
+          batch_size: number of examples to be processed in parallel, should be
+            set to a large value.
+          detect_convergence: whether to stop when approximately converged.
+          convergence_threshold: threshold for determining convergence,
+            represents ratio of max standard deviation to max SAGE value.
+          n_samples: number of permutations to unroll.
+          verbose: print progress messages.
+          bar: display progress bar.
+          check_every: number of batches between progress/convergence checks.
+          lam_ridge: ridge regularization parameter.
+
+        The default behavior is to detect convergence based on the width of the
+        SAGE values' confidence intervals. Convergence is defined by the ratio
+        of the maximum standard deviation to the gap between the largest and
+        smallest values (or 0).
+
+        Returns: Explanation object.
+        '''
+        # Determine explanation type.
+        if Y is not None:
+            explanation_type = 'SAGE'
+        else:
+            explanation_type = 'Shapley Effects'
+
+        # Verify model.
+        N, _ = X.shape
+        num_features = self.imputer.num_groups
+        X, Y = utils.verify_model_data(self.model, X, Y, self.loss_fn,
+                                       batch_size * self.imputer.samples)
+
+        # For setting up bar.
+        estimate_convergence = n_samples is None
+        if estimate_convergence and verbose:
+            print('Estimating convergence time')
+
+        # Possibly force convergence detection.
+        if n_samples is None:
+            n_samples = 1e20
+            if not detect_convergence:
+                detect_convergence = True
+                if verbose:
+                    print('Turning convergence detection on')
+
+        if detect_convergence:
+            assert 0 < convergence_threshold < 1
+
+        # Print message explaining parameter choices.
+        if verbose:
+            print('Batch size = batch * samples = {}'.format(
+                batch_size * self.imputer.samples))
+
+        # Weighting kernel (probability of each subset size).
+        weights = np.arange(1, num_features)
+        weights = 1 / (weights * (num_features - weights))
+        weights = weights / np.sum(weights)
+
+        # Estimate v({}) and v(D) for constraints.
+        none_included, all_included = estimate_constraints(
+            self.model, X, Y, batch_size, self.loss_fn)
+        a0 = none_included
+        a1 = all_included - none_included
+
+        # Exact form for A, c.
+        c = 0.5 * np.ones(num_features)
+        p_coaccur = (
+            (np.sum((np.arange(2, num_features) - 1) / (num_features - np.arange(2, num_features)))) /
+            (num_features * (num_features - 1) *
+             np.sum(1 / (np.arange(1, num_features) * (num_features - np.arange(1, num_features))))))
+        A = np.eye(num_features) * 0.5 + (1 - np.eye(num_features)) * p_coaccur
+
+        # Set up bar.
+        n_loops = int(n_samples / batch_size)
+        if bar:
+            if estimate_convergence:
+                bar = tqdm(total=1)
+            else:
+                bar = tqdm(total=n_loops * batch_size)
+
+        # Setup.
+        b = 0
+        n = 0
+        b_sum_squares = 0
+
+        # Sample subsets.
+        for it in range(n_loops):
+            # Sample data.
+            mb = np.random.choice(N, batch_size)
+            x = X[mb]
+            y = Y[mb]
+
+            # Sample subsets.
+            S = np.zeros((batch_size, num_features), dtype=bool)
+            num_included = np.random.choice(num_features - 1, size=batch_size,
+                                            p=weights) + 1
+            for row, num in zip(S, num_included):
+                inds = np.random.choice(num_features, size=num, replace=False)
+                row[inds] = 1
+
+            # Make predictions.
+            y_hat = self.model(self.imputer(x, S))
+            y_hat = np.mean(y_hat.reshape(
+                -1, self.imputer.samples, *y_hat.shape[1:]), axis=1)
+            loss = - self.loss_fn(y_hat, y)
+            b_temp1 = S.astype(float) * loss[:, np.newaxis]
+
+            # Invert subset for variance reduction.
+            S = np.logical_not(S)
+
+            # Make predictions.
+            y_hat = self.model(self.imputer(x, S))
+            y_hat = np.mean(y_hat.reshape(
+                -1, self.imputer.samples, *y_hat.shape[1:]), axis=1)
+            loss = - self.loss_fn(y_hat, y)
+            b_temp2 = S.astype(float) * loss[:, np.newaxis]
+
+            # Covariance estimate (Welford's algorithm).
+            n += batch_size
+            b_temp = 0.5 * (b_temp1 + b_temp2)
+            b_diff = b_temp - b
+            b += np.sum(b_diff, axis=0) / n
+            b_diff2 = b_temp - b
+            b_sum_squares += np.sum(
+                np.matmul(np.expand_dims(b_diff, 2),
+                          np.expand_dims(b_diff2, 1)), axis=0)
+            if bar and (not estimate_convergence):
+                bar.update(batch_size)
+
+            if (it + 1) % check_every == 0:
+                # Calculate progress.
+                values, std = calculate_result(
+                    A, b, c, a0, a1, b_sum_squares, n)
+                ratio = (np.max(std) /
+                         (max(values.max(), 0) - min(values.min(), 0)))
+
+                # Print progress message.
+                if verbose:
+                    if detect_convergence:
+                        print('StdDev Ratio = {:.4f} (Converge at {:.4f})'.format(
+                            ratio, convergence_threshold))
+                    else:
+                        print('StdDev Ratio = {:.4f}'.format(ratio))
+
+                # Check for convergence.
+                if detect_convergence:
+                    if ratio < convergence_threshold:
+                        if verbose:
+                            print('Detected convergence')
+
+                        # Skip bar ahead.
+                        if bar:
+                            bar.n = bar.total
+                            bar.refresh()
+                        break
+
+                # Update convergence estimation.
+                if bar and estimate_convergence:
+                    std_est = ratio * np.sqrt(it + 1)
+                    n_est = (std_est / convergence_threshold) ** 2
+                    bar.n = np.around((it + 1) / n_est, 4)
+                    bar.refresh()
+
+        # Calculate SAGE values.
+        values, std = calculate_result(A, b, c, a0, a1, b_sum_squares, n)
+
+        return core.Explanation(np.squeeze(values), std, explanation_type)

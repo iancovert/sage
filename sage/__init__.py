@@ -5,3 +5,4 @@ from .imputers import ReferenceImputer, MarginalImputer
 from .grouped_imputers import GroupedReferenceImputer, GroupedMarginalImputer
 from .permutation_sampler import PermutationSampler
 from .iterated_sampler import IteratedSampler
+from .kernel_estimator import KernelEstimator

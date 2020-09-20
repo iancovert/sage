@@ -20,24 +20,20 @@ def estimate_total(model, X, Y, batch_size, loss_fn):
     for i in range(np.ceil(len(X) / batch_size).astype(int)):
         x = X[i * batch_size:(i + 1) * batch_size]
         y = Y[i * batch_size:(i + 1) * batch_size]
-        n = len(x)
+        N += len(x)
         pred = model(x)
-        _mean_loss = np.mean(loss_fn(pred, y))
-        _mean_pred = np.mean(pred, axis=0, keepdims=True)
-        mean_loss = (N * mean_loss + n * _mean_loss) / (N + n)
-        mean_pred = (N * mean_pred + n * _mean_pred) / (N + n)
-        N += n
+        loss = loss_fn(pred, y)
+        mean_loss += np.sum(loss - mean_loss) / N
+        mean_pred += np.sum(pred - mean_pred, axis=0, keepdims=True) / N
 
     # Mean loss with no features.
     N = 0
     marginal_loss = 0
     for i in range(np.ceil(len(X) / batch_size).astype(int)):
         y = Y[i * batch_size:(i + 1) * batch_size]
-        n = len(x)
-        pred = mean_pred.repeat(n, 0)
-        _mean_loss = np.mean(loss_fn(pred, y))
-        marginal_loss = (N * marginal_loss + n * _mean_loss) / (N + n)
-        N += n
+        N += len(y)
+        loss = loss_fn(mean_pred.repeat(len(y), 0), y)
+        marginal_loss += np.sum(loss - marginal_loss) / N
 
     return marginal_loss - mean_loss
 
