@@ -16,6 +16,8 @@ class Explanation:
              max_features=np.inf,
              orientation='horizontal',
              error_bars=True,
+             confidence_level=0.95,
+             capsize=5,
              color='tab:green',
              title='Feature Importance',
              title_size=20,
@@ -33,6 +35,8 @@ class Explanation:
           max_features: number of features to display.
           orientation: horizontal (default) or vertical.
           error_bars: whether to include standard deviation error bars.
+          confidence_level: confidence interval coverage (e.g., 95%).
+          capsize: error bar cap width.
           color: bar chart color.
           title: plot title.
           title_size: font size for title.
@@ -44,8 +48,8 @@ class Explanation:
         '''
         return plotting.plot(
             self, feature_names, sort_features, max_features, orientation,
-            error_bars, color, title, title_size, tick_size, tick_rotation,
-            label_size, figsize, return_fig)
+            error_bars, confidence_level, capsize, color, title, title_size,
+            tick_size, tick_rotation, label_size, figsize, return_fig)
 
     def comparison(self,
                    other_values,
@@ -55,6 +59,8 @@ class Explanation:
                    max_features=np.inf,
                    orientation='vertical',
                    error_bars=True,
+                   confidence_level=0.95,
+                   capsize=5,
                    colors=None,
                    title='Feature Importance Comparison',
                    title_size=20,
@@ -75,6 +81,8 @@ class Explanation:
           max_features: number of features to display.
           orientation: horizontal (default) or vertical.
           error_bars: whether to include standard deviation error bars.
+          confidence_level: confidence interval coverage (e.g., 95%).
+          capsize: error bar cap width.
           colors: colors for each set of SAGE values.
           title: plot title.
           title_size: font size for title.
@@ -87,9 +95,9 @@ class Explanation:
         '''
         return plotting.comparison_plot(
             (self, other_values), comparison_names, feature_names,
-            sort_features, max_features, orientation, error_bars, colors, title,
-            title_size, tick_size, tick_rotation, label_size, legend_loc,
-            figsize, return_fig)
+            sort_features, max_features, orientation, error_bars,
+            confidence_level, capsize, colors, title, title_size, tick_size,
+            tick_rotation, label_size, legend_loc, figsize, return_fig)
 
     def save(self, filename):
         '''Save Explanation object.'''

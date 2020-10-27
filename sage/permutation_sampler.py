@@ -27,7 +27,7 @@ class PermutationSampler:
                  detect_convergence=True,
                  convergence_threshold=0.05,
                  n_permutations=None,
-                 verbose=True,
+                 verbose=False,
                  bar=True):
         '''
         Estimate SAGE values.

@@ -1,6 +1,7 @@
 import warnings
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.stats import norm
 
 
 def plot(explanation,
@@ -9,6 +10,8 @@ def plot(explanation,
          max_features=np.inf,
          orientation='horizontal',
          error_bars=True,
+         confidence_level=0.95,
+         capsize=5,
          color='tab:green',
          title='Feature Importance',
          title_size=20,
@@ -27,6 +30,8 @@ def plot(explanation,
       max_features: number of features to display.
       orientation: horizontal (default) or vertical.
       error_bars: whether to include standard deviation error bars.
+      confidence_level: confidence interval coverage (e.g., 95%).
+      capsize: error bar cap width.
       color: bar chart color.
       title: plot title.
       title_size: font size for title.
@@ -72,6 +77,9 @@ def plot(explanation,
     # Discard std if necessary.
     if not error_bars:
         std = None
+    else:
+        assert 0 < confidence_level < 1
+        std = std * norm.ppf(0.5 + confidence_level / 2)
 
     # Make plot.
     fig = plt.figure(figsize=figsize)
@@ -80,7 +88,7 @@ def plot(explanation,
     if orientation == 'horizontal':
         # Bar chart.
         ax.barh(np.arange(len(feature_names))[::-1], values,
-                color=color, xerr=std)
+                color=color, xerr=std, capsize=capsize)
 
         # Feature labels.
         if tick_rotation is not None:
@@ -97,7 +105,7 @@ def plot(explanation,
     elif orientation == 'vertical':
         # Bar chart.
         ax.bar(np.arange(len(feature_names)), values, color=color,
-               yerr=std)
+               yerr=std, capsize=capsize)
 
         # Feature labels.
         if tick_rotation is None:
@@ -142,6 +150,8 @@ def comparison_plot(comparison_explanations,
                     max_features=np.inf,
                     orientation='vertical',
                     error_bars=True,
+                    confidence_level=0.95,
+                    capsize=5,
                     colors=('tab:green', 'tab:blue'),
                     title='Feature Importance Comparison',
                     title_size=20,
@@ -162,6 +172,8 @@ def comparison_plot(comparison_explanations,
       max_features: number of features to display.
       orientation: horizontal (default) or vertical.
       error_bars: whether to include standard deviation error bars.
+      confidence_level: confidence interval coverage (e.g., 95%).
+      capsize: error bar cap width.
       colors: colors for each set of SAGE values.
       title: plot title.
       title_size: font size for title.
@@ -234,6 +246,9 @@ def comparison_plot(comparison_explanations,
     # Discard std if necessary.
     if not error_bars:
         std = [None for _ in std]
+    else:
+        assert 0 < confidence_level < 1
+        std = [stddev * norm.ppf(0.5 + confidence_level / 2) for stddev in std]
 
     # Make plot.
     width = 0.8 / num_comps
@@ -247,7 +262,7 @@ def comparison_plot(comparison_explanations,
             pos = - 0.4 + width / 2 + width * i
             ax.barh(np.arange(len(feature_names))[::-1] - pos,
                     sage_values, height=width, color=color, xerr=stddev,
-                    label=name)
+                    capsize=capsize, label=name)
 
         # Feature labels.
         if tick_rotation is not None:
@@ -267,7 +282,7 @@ def comparison_plot(comparison_explanations,
             pos = - 0.4 + width / 2 + width * i
             ax.bar(np.arange(len(feature_names)) + pos,
                    sage_values, width=width, color=color, yerr=stddev,
-                   label=name)
+                   capsize=capsize, label=name)
 
         # Feature labels.
         if tick_rotation is None:

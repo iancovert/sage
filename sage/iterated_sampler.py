@@ -111,7 +111,7 @@ class IteratedSampler:
                  n_samples=None,
                  optimize_ordering=True,
                  ordering_batches=1,
-                 verbose=True,
+                 verbose=False,
                  bar=True):
         '''
         Estimate SAGE values.

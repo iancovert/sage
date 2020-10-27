@@ -33,7 +33,7 @@ def estimate_constraints(model, X, Y, batch_size, loss_fn):
     return - marginal_loss, - mean_loss
 
 
-def calculate_result(A, b, c, a0, a1, b_sum_squares, n):
+def calculate_result(A, b, v0, v1, b_sum_squares, n):
     '''
     Calculate the regression coefficients and their uncertainty estimates.
     The arguments are named based on variable names in this algorithm's
@@ -42,10 +42,10 @@ def calculate_result(A, b, c, a0, a1, b_sum_squares, n):
     # Calculate values.
     num_features = A.shape[1]
     A_inv_one = np.linalg.solve(A, np.ones(num_features))
-    A_inv_vec = np.linalg.solve(A, b - c * a0)
+    A_inv_vec = np.linalg.solve(A, b)
     values = (
         A_inv_vec -
-        A_inv_one * (np.sum(A_inv_vec) - a1) / np.sum(A_inv_one))
+        A_inv_one * (np.sum(A_inv_vec) - v1 + v0) / np.sum(A_inv_one))
 
     # Calculate variance.
     b_sum_squares = 0.5 * (b_sum_squares + b_sum_squares.T)
@@ -82,7 +82,7 @@ class KernelEstimator:
                  detect_convergence=True,
                  convergence_threshold=0.02,
                  n_samples=None,
-                 verbose=True,
+                 verbose=False,
                  bar=True,
                  check_every=5):
         '''
@@ -100,7 +100,6 @@ class KernelEstimator:
           verbose: print progress messages.
           bar: display progress bar.
           check_every: number of batches between progress/convergence checks.
-          lam_ridge: ridge regularization parameter.
 
         The default behavior is to detect convergence based on the width of the
         SAGE values' confidence intervals. Convergence is defined by the ratio
@@ -148,13 +147,10 @@ class KernelEstimator:
         weights = weights / np.sum(weights)
 
         # Estimate v({}) and v(D) for constraints.
-        none_included, all_included = estimate_constraints(
+        v0, v1 = estimate_constraints(
             self.model, X, Y, batch_size, self.loss_fn)
-        a0 = none_included
-        a1 = all_included - none_included
 
-        # Exact form for A, c.
-        c = 0.5 * np.ones(num_features)
+        # Exact form for A.
         p_coaccur = (
             (np.sum((np.arange(2, num_features) - 1) / (num_features - np.arange(2, num_features)))) /
             (num_features * (num_features - 1) *
@@ -170,8 +166,8 @@ class KernelEstimator:
                 bar = tqdm(total=n_loops * batch_size)
 
         # Setup.
-        b = 0
         n = 0
+        b = 0
         b_sum_squares = 0
 
         # Sample subsets.
@@ -193,7 +189,7 @@ class KernelEstimator:
             y_hat = self.model(self.imputer(x, S))
             y_hat = np.mean(y_hat.reshape(
                 -1, self.imputer.samples, *y_hat.shape[1:]), axis=1)
-            loss = - self.loss_fn(y_hat, y)
+            loss = - self.loss_fn(y_hat, y) - v0
             b_temp1 = S.astype(float) * loss[:, np.newaxis]
 
             # Invert subset for variance reduction.
@@ -203,7 +199,7 @@ class KernelEstimator:
             y_hat = self.model(self.imputer(x, S))
             y_hat = np.mean(y_hat.reshape(
                 -1, self.imputer.samples, *y_hat.shape[1:]), axis=1)
-            loss = - self.loss_fn(y_hat, y)
+            loss = - self.loss_fn(y_hat, y) - v0
             b_temp2 = S.astype(float) * loss[:, np.newaxis]
 
             # Covariance estimate (Welford's algorithm).
@@ -221,7 +217,7 @@ class KernelEstimator:
             if (it + 1) % check_every == 0:
                 # Calculate progress.
                 values, std = calculate_result(
-                    A, b, c, a0, a1, b_sum_squares, n)
+                    A, b, v0, v1, b_sum_squares, n)
                 ratio = (np.max(std) /
                          (max(values.max(), 0) - min(values.min(), 0)))
 
@@ -253,6 +249,6 @@ class KernelEstimator:
                     bar.refresh()
 
         # Calculate SAGE values.
-        values, std = calculate_result(A, b, c, a0, a1, b_sum_squares, n)
+        values, std = calculate_result(A, b, v0, v1, b_sum_squares, n)
 
         return core.Explanation(np.squeeze(values), std, explanation_type)
