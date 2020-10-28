@@ -2,7 +2,7 @@ import sys
 import numpy as np
 
 
-def model_conversion(model, loss_fn):
+def model_conversion(model):
     '''Convert model to callable.'''
     if safe_isinstance(model, 'sklearn.base.ClassifierMixin'):
         return lambda x: model.predict_proba(x)
@@ -24,32 +24,14 @@ def model_conversion(model, loss_fn):
         return lambda x: model.predict(xgboost.DMatrix(x))
 
     elif safe_isinstance(model, 'torch.nn.Module'):
+        print('Setting up imputer for PyTorch model, assuming that any '
+              'necessary output activations are applied properly. If '
+              'not, please set up nn.Sequential with nn.Sigmoid or nn.Softmax')
+
         import torch
         device = next(model.parameters()).device
-
-        if isinstance(loss_fn, CrossEntropyLoss):
-            print('Converting PyTorch classifier, outputs are assumed '
-                  'to be logits')
-
-            def f(x):
-                x = torch.tensor(x, dtype=torch.float32, device=device)
-                out = model(x)
-                if out.dim() == 1:
-                    out = out.sigmoid()
-                elif out.dim() == 2 and out.shape[1] == 1:
-                    out = out.sigmoid()
-                elif out.dim() == 2:
-                    out = out.softmax(dim=1)
-                else:
-                    raise ValueError('predictions are not valid shape')
-                return out.cpu().data.numpy()
-        else:
-            def f(x):
-                x = torch.tensor(x, dtype=torch.float32, device=device)
-                out = model(x)
-                return out.cpu().data.numpy()
-
-        return f
+        return lambda x: model(torch.tensor(
+            x, dtype=torch.float32, device=device)).cpu().data.numpy()
 
     elif callable(model):
         # Assume model is compatible function or callable object.
@@ -60,23 +42,23 @@ def model_conversion(model, loss_fn):
                          'please convert to a lambda function')
 
 
-def dataset_output(model, X, batch_size):
+def dataset_output(imputer, X, batch_size):
     '''Get model output for entire dataset.'''
     Y = []
     for i in range(int(np.ceil(len(X) / batch_size))):
         x = X[i*batch_size:(i+1)*batch_size]
-        Y.append(model(x))
+        pred = imputer(x, np.ones((len(x), imputer.num_groups), dtype=bool))
+        Y.append(pred)
     return np.concatenate(Y)
 
 
-def verify_model_data(model, X, Y, loss, batch_size):
+def verify_model_data(imputer, X, Y, loss, batch_size):
     '''Ensure that model and data are set up properly.'''
     check_labels = True
     if Y is None:
-        # Use the model output (Shapley Effects, not SAGE).
-        print('Using model output to calculate sensitivity')
+        print('Calculating model sensitivity (Shapley Effects, not SAGE)')
         check_labels = False
-        Y = dataset_output(model, X, batch_size)
+        Y = dataset_output(imputer, X, batch_size)
 
         # Fix output shape for classification tasks.
         if isinstance(loss, CrossEntropyLoss):
@@ -85,33 +67,36 @@ def verify_model_data(model, X, Y, loss, batch_size):
             if Y.shape[1] == 1:
                 Y = np.concatenate([1 - Y, Y], axis=1)
 
-    if isinstance(loss, CrossEntropyLoss) and check_labels:
-        probs = model(X[:batch_size])
-        Y = Y.astype(int)
+    if isinstance(loss, CrossEntropyLoss):
+        x = X[:batch_size]
+        probs = imputer(x, np.ones((len(x), imputer.num_groups), dtype=bool))
 
         # Check labels shape.
-        if Y.shape == (len(X),):
-            # This is the preferred shape.
-            pass
-        elif Y.shape == (len(X), 1):
-            Y = Y[:, 0]
-        else:
-            raise ValueError('labels shape should be (batch,) or (batch, 1)'
-                             ' for binary classification')
+        if check_labels:
+            Y = Y.astype(int)
+            if Y.shape == (len(X),):
+                # This is the preferred shape.
+                pass
+            elif Y.shape == (len(X), 1):
+                Y = Y[:, 0]
+            else:
+                raise ValueError('labels shape should be (batch,) or (batch, 1)'
+                                 ' for cross entropy loss')
 
         if (probs.ndim == 1) or (probs.shape[1] == 1):
             # Check label encoding.
-            unique_labels = np.unique(Y)
-            if np.array_equal(unique_labels, np.array([0, 1])):
-                # This is the preferred labeling.
-                pass
-            elif np.array_equal(unique_labels, np.array([-1, 1])):
-                # Set -1 to 0.
-                Y = Y.copy()
-                Y[Y == -1] = 0
-            else:
-                raise ValueError('labels for binary classification must be '
-                                 '[0, 1] or [-1, 1]')
+            if check_labels:
+                unique_labels = np.unique(Y)
+                if np.array_equal(unique_labels, np.array([0, 1])):
+                    # This is the preferred labeling.
+                    pass
+                elif np.array_equal(unique_labels, np.array([-1, 1])):
+                    # Set -1 to 0.
+                    Y = Y.copy()
+                    Y[Y == -1] = 0
+                else:
+                    raise ValueError('labels for binary classification must be '
+                                     '[0, 1] or [-1, 1]')
 
             # Check for valid probability outputs.
             valid_probs = np.all(np.logical_and(probs >= 0, probs <= 1))
@@ -123,10 +108,10 @@ def verify_model_data(model, X, Y, loss, batch_size):
             valid_probs = valid_probs and np.allclose(ones, np.ones(ones.shape))
 
         else:
-            raise ValueError('predictions array has too many dimensions')
+            raise ValueError('prediction has too many dimensions')
 
         if not valid_probs:
-            raise ValueError('model outputs are not valid probabilities')
+            raise ValueError('predictions are not valid probabilities')
 
     return X, Y
 

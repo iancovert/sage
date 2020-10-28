@@ -3,63 +3,43 @@ from sage import utils, core
 from tqdm.auto import tqdm
 
 
-def estimate_total(model, X, Y, batch_size, loss_fn):
-    '''
-    Estimate sum of SAGE values.
-
-    This is used to get a worst-case estimate of the maximum
-    SAGE value. It assumes that the prediction given no features is
-    the mean prediction. This is not true of all imputers, and it will
-    overestimate the total value in situations where certain features are
-    never held out (which may lead to premature convergence).
-    '''
-    # Mean loss.
+def estimate_total(imputer, X, Y, batch_size, loss_fn):
+    '''Estimate sum of SAGE values.'''
     N = 0
     mean_loss = 0
-    mean_pred = 0
+    marginal_loss = 0
+    num_groups = imputer.num_groups
     for i in range(np.ceil(len(X) / batch_size).astype(int)):
         x = X[i * batch_size:(i + 1) * batch_size]
         y = Y[i * batch_size:(i + 1) * batch_size]
         N += len(x)
-        pred = model(x)
+
+        # All features.
+        pred = imputer(x, np.ones((len(x), num_groups), dtype=bool))
         loss = loss_fn(pred, y)
         mean_loss += np.sum(loss - mean_loss) / N
-        mean_pred += np.sum(pred - mean_pred, axis=0, keepdims=True) / N
 
-    # Mean loss with no features.
-    N = 0
-    marginal_loss = 0
-    for i in range(np.ceil(len(X) / batch_size).astype(int)):
-        y = Y[i * batch_size:(i + 1) * batch_size]
-        N += len(y)
-        loss = loss_fn(mean_pred.repeat(len(y), 0), y)
+        # No features.
+        pred = imputer(x, np.zeros((len(x), num_groups), dtype=bool))
+        loss = loss_fn(pred, y)
         marginal_loss += np.sum(loss - marginal_loss) / N
 
     return marginal_loss - mean_loss
 
 
-def estimate_holdout_importance(model, X, Y, imputer, batch_size, loss_fn,
-                                batches, bar):
-    '''
-    Estimate impact of holding out features individually.
-
-    This provides a rough estimate, but the result is only used to
-    determine feature ordering.
-    '''
+def estimate_holdout_importance(imputer, X, Y, batch_size, loss_fn, batches):
+    '''Roughly estimate impact of holding out features individually.'''
     N, _ = X.shape
-    num_features = imputer.num_groups
-    holdout_importance = np.zeros(num_features)
-    S = np.ones((batch_size, num_features), dtype=bool)
-
-    if bar:
-        bar = tqdm(total=num_features)
+    num_groups = imputer.num_groups
+    holdout_importance = np.zeros(num_groups)
+    S = np.ones((batch_size, num_groups), dtype=bool)
 
     # Performance with all features.
     mb = np.random.choice(N, batch_size)
-    all_loss = np.mean(loss_fn(model(X[mb]), Y[mb]))
+    all_loss = np.mean(loss_fn(imputer(X[mb], S), Y[mb]))
 
     # Hold out each feature individually.
-    for i in range(num_features):
+    for i in range(num_groups):
         S[:, i] = 0
         loss_list = []
 
@@ -68,46 +48,36 @@ def estimate_holdout_importance(model, X, Y, imputer, batch_size, loss_fn,
             mb = np.random.choice(N, batch_size)
             x = X[mb]
             y = Y[mb]
-            pred = model(imputer(x, S))
-            pred = np.mean(pred.reshape(
-                -1, imputer.samples, *pred.shape[1:]), axis=1)
+            pred = imputer(x, S)
             loss = loss_fn(pred, y)
             loss_list.append(np.mean(loss))
 
         # Omit constant term (loss with all features).
         holdout_importance[i] = np.mean(loss_list)
         S[:, i] = 1
-        if bar:
-            bar.update(1)
-
-    if bar:
-        bar.close()
     return holdout_importance - all_loss
 
 
-class IteratedSampler:
+class IteratedEstimator:
     '''
     Estimate SAGE values one at a time by sampling subsets of features.
 
     Args:
-      model: callable prediction model.
-      imputer: for imputing held out values.
+      imputer: model that accommodates held out features.
       loss: loss function ('mse', 'cross entropy').
     '''
     def __init__(self,
-                 model,
                  imputer,
                  loss='cross entropy'):
         self.imputer = imputer
         self.loss_fn = utils.get_loss(loss, reduction='none')
-        self.model = utils.model_conversion(model, self.loss_fn)
 
     def __call__(self,
                  X,
                  Y=None,
                  batch_size=512,
                  detect_convergence=True,
-                 convergence_threshold=0.05,
+                 thresh=0.025,
                  n_samples=None,
                  optimize_ordering=True,
                  ordering_batches=1,
@@ -122,8 +92,7 @@ class IteratedSampler:
           batch_size: number of examples to be processed in parallel, should be
             set to a large value.
           detect_convergence: whether to stop when approximately converged.
-          convergence_threshold: threshold for determining convergence,
-            represents ratio of standard deviation to max SAGE value.
+          thresh: threshold for determining convergence
           n_samples: number of samples to take per feature.
           optimize_ordering: whether to guess an ordering of features based on
             importance. May accelerate convergence.
@@ -133,8 +102,8 @@ class IteratedSampler:
 
         The default behavior is to detect each feature's convergence based on
         the ratio of its standard deviation to the gap between the largest and
-        smallest values (or 0). Since neither value is known initially, we begin
-        we estimates (upper_val, lower_val) and update them as more features are
+        smallest values. Since neither value is known initially, we begin with
+        estimates (upper_val, lower_val) and update them as more features are
         analyzed.
 
         Returns: Explanation object.
@@ -148,8 +117,8 @@ class IteratedSampler:
         # Verify model.
         N, _ = X.shape
         num_features = self.imputer.num_groups
-        X, Y = utils.verify_model_data(self.model, X, Y, self.loss_fn,
-                                       batch_size * self.imputer.samples)
+        X, Y = utils.verify_model_data(self.imputer, X, Y, self.loss_fn,
+                                       batch_size)
 
         # For setting up bar.
         estimate_convergence = n_samples is None
@@ -165,7 +134,7 @@ class IteratedSampler:
                     print('Turning convergence detection on')
 
         if detect_convergence:
-            assert 0 < convergence_threshold < 1
+            assert 0 < thresh < 1
 
         # Print message explaining parameter choices.
         if verbose:
@@ -173,19 +142,18 @@ class IteratedSampler:
                 batch_size * self.imputer.samples))
 
         # For detecting convergence.
-        print('Estimating total importance')
-        total = estimate_total(
-            self.model, X, Y, batch_size * self.imputer.samples, self.loss_fn)
+        total = estimate_total(self.imputer, X, Y, batch_size, self.loss_fn)
         upper_val = max(total / num_features, 0)
         lower_val = 0
 
         # Feature ordering.
         if optimize_ordering:
             if verbose:
-                print('Determining feature ordering')
+                print('Determining feature ordering...')
             holdout_importance = estimate_holdout_importance(
-                self.model, X, Y, self.imputer, batch_size, self.loss_fn,
-                ordering_batches, bar)
+                self.imputer, X, Y, batch_size, self.loss_fn, ordering_batches)
+            if verbose:
+                print('Done')
             # Use np.abs in case there are large negative contributors.
             ordering = list(np.argsort(np.abs(holdout_importance))[::-1])
         else:
@@ -213,16 +181,12 @@ class IteratedSampler:
                 S = utils.sample_subset_feature(num_features, batch_size, ind)
 
                 # Loss with feature excluded.
-                y_hat = self.model(self.imputer(x, S))
-                y_hat = np.mean(y_hat.reshape(
-                    -1, self.imputer.samples, *y_hat.shape[1:]), axis=1)
+                y_hat = self.imputer(x, S)
                 loss_discluded = self.loss_fn(y_hat, y)
 
                 # Loss with feature included.
-                S[:, ind] = 1.0
-                y_hat = self.model(self.imputer(x, S))
-                y_hat = np.mean(y_hat.reshape(
-                    -1, self.imputer.samples, *y_hat.shape[1:]), axis=1)
+                S[:, ind] = 1
+                y_hat = self.imputer(x, S)
                 loss_included = self.loss_fn(y_hat, y)
 
                 # Calculate delta sample.
@@ -242,26 +206,27 @@ class IteratedSampler:
                     if detect_convergence:
                         print('StdDev Ratio = {:.4f} '
                               '(Converge at {:.4f})'.format(
-                               ratio, convergence_threshold))
+                               ratio, thresh))
                     else:
                         print('StdDev Ratio = {:.4f}'.format(ratio))
 
                 # Check for convergence.
                 if detect_convergence:
-                    if ratio < convergence_threshold:
+                    if ratio < thresh:
                         if verbose:
                             print('Detected feature convergence')
 
                         # Skip bar ahead.
                         if bar:
-                            bar.n = bar.total * (i + 1) / num_features
+                            bar.n = np.around(
+                                bar.total * (i + 1) / num_features, 4)
                             bar.refresh()
                         break
 
                 # Update convergence estimation.
                 if bar and estimate_convergence:
                     std_est = ratio * np.sqrt(it + 1)
-                    n_est = (std_est / convergence_threshold) ** 2
+                    n_est = (std_est / thresh) ** 2
                     bar.n = np.around((i + (it + 1) / n_est) / num_features, 4)
                     bar.refresh()
 

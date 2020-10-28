@@ -39,13 +39,13 @@ feature_names = ...
 model = ...
 
 # Set up imputer to represent the data distribution
-imputer = sage.MarginalImputer(x[:512])
+imputer = sage.MarginalImputer(model, x[:512])
 
-# Set up sampler
-sampler = sage.PermutationSampler(model, imputer, 'mse')
+# Set up estimator
+estimator = sage.PermutationEstimator(imputer, 'mse')
 
 # Calculate SAGE values
-sage_values = sampler(x, y)
+sage_values = estimator(x, y)
 sage_values.plot(feature_names)
 ```
 
@@ -55,11 +55,11 @@ The result will look something like this.
   <img width="540" src="https://raw.githubusercontent.com/iancovert/sage/master/docs/bike.svg"/>
 </p>
 
+**Uncertainty estimation.** Confidence intervals are returned for each feature's SAGE value.
+
 **Convergence.** Convergence is determined automatically based on the size of each value's confidence interval, and a progress bar will display the estimated time until convergence.
 
-**Uncertainty estimation.** Standard deviation confidence intervals are returned for each feature's SAGE value.
-
-**Model conversion.** Our back-end requires that models be converted into a consistent format, and this conversion step is performed automatically for XGBoost, CatBoost, LightGBM, sklearn and PyTorch models. If you're using a different kind of model, you'll need to convert it to a callable function (see [here](https://github.com/iancovert/sage/blob/master/sage/utils.py#L5) for examples).
+**Model conversion.** Our back-end requires that models be converted into a consistent format, and the conversion step is performed automatically for XGBoost, CatBoost, LightGBM, sklearn and PyTorch models. If you're using a different kind of model, you'll need to convert it to a callable function (see [here](https://github.com/iancovert/sage/blob/master/sage/utils.py#L5) for examples).
 
 ## Examples
 
@@ -76,5 +76,4 @@ The result will look something like this.
 
 ## References
 
-Ian Covert, Scott Lundberg, Su-In Lee. "Understanding Global Feature Contributions Through Additive Importance Measures." *arXiv preprint arXiv:2004.00668*, 2020.
-
+Ian Covert, Scott Lundberg, Su-In Lee. "Understanding Global Feature Contributions With Additive Importance Measures." NeurIPS 2020.

@@ -3,43 +3,35 @@ from sage import utils, core
 from tqdm.auto import tqdm
 
 
-def estimate_constraints(model, X, Y, batch_size, loss_fn):
+def estimate_constraints(imputer, X, Y, batch_size, loss_fn):
     '''
     Estimate the loss when no features are included, and when all features
     are included. This is used to ensure that the constraints are set properly.
     '''
-    # Mean loss.
     N = 0
     mean_loss = 0
-    mean_pred = 0
+    marginal_loss = 0
+    num_groups = imputer.num_groups
     for i in range(np.ceil(len(X) / batch_size).astype(int)):
         x = X[i * batch_size:(i + 1) * batch_size]
         y = Y[i * batch_size:(i + 1) * batch_size]
         N += len(x)
-        pred = model(x)
+
+        # All features.
+        pred = imputer(x, np.ones((len(x), num_groups), dtype=bool))
         loss = loss_fn(pred, y)
         mean_loss += np.sum(loss - mean_loss) / N
-        mean_pred += np.sum(pred - mean_pred, axis=0, keepdims=True) / N
 
-    # Mean loss with no features.
-    N = 0
-    marginal_loss = 0
-    for i in range(np.ceil(len(X) / batch_size).astype(int)):
-        y = Y[i * batch_size:(i + 1) * batch_size]
-        N += len(y)
-        loss = loss_fn(mean_pred.repeat(len(y), 0), y)
+        # No features.
+        pred = imputer(x, np.zeros((len(x), num_groups), dtype=bool))
+        loss = loss_fn(pred, y)
         marginal_loss += np.sum(loss - marginal_loss) / N
 
     return - marginal_loss, - mean_loss
 
 
 def calculate_result(A, b, v0, v1, b_sum_squares, n):
-    '''
-    Calculate the regression coefficients and their uncertainty estimates.
-    The arguments are named based on variable names in this algorithm's
-    derivation.
-    '''
-    # Calculate values.
+    '''Calculate regression coefficients and uncertainty estimates.'''
     num_features = A.shape[1]
     A_inv_one = np.linalg.solve(A, np.ones(num_features))
     A_inv_vec = np.linalg.solve(A, b)
@@ -66,21 +58,19 @@ class KernelEstimator:
     Estimate SAGE values by fitting weighted linear model.
 
     Args:
-      model: callable prediction model.
-      imputer: for imputing held out values.
+      imputer: model that accommodates held out features.
       loss: loss function ('mse', 'cross entropy').
     '''
-    def __init__(self, model, imputer, loss):
+    def __init__(self, imputer, loss):
         self.imputer = imputer
         self.loss_fn = utils.get_loss(loss, reduction='none')
-        self.model = utils.model_conversion(model, self.loss_fn)
 
     def __call__(self,
                  X,
                  Y=None,
                  batch_size=512,
                  detect_convergence=True,
-                 convergence_threshold=0.02,
+                 thresh=0.01,
                  n_samples=None,
                  verbose=False,
                  bar=True,
@@ -94,8 +84,7 @@ class KernelEstimator:
           batch_size: number of examples to be processed in parallel, should be
             set to a large value.
           detect_convergence: whether to stop when approximately converged.
-          convergence_threshold: threshold for determining convergence,
-            represents ratio of max standard deviation to max SAGE value.
+          thresh: threshold for determining convergence.
           n_samples: number of permutations to unroll.
           verbose: print progress messages.
           bar: display progress bar.
@@ -104,7 +93,7 @@ class KernelEstimator:
         The default behavior is to detect convergence based on the width of the
         SAGE values' confidence intervals. Convergence is defined by the ratio
         of the maximum standard deviation to the gap between the largest and
-        smallest values (or 0).
+        smallest values.
 
         Returns: Explanation object.
         '''
@@ -117,8 +106,8 @@ class KernelEstimator:
         # Verify model.
         N, _ = X.shape
         num_features = self.imputer.num_groups
-        X, Y = utils.verify_model_data(self.model, X, Y, self.loss_fn,
-                                       batch_size * self.imputer.samples)
+        X, Y = utils.verify_model_data(
+            self.imputer, X, Y, self.loss_fn, batch_size)
 
         # For setting up bar.
         estimate_convergence = n_samples is None
@@ -134,7 +123,7 @@ class KernelEstimator:
                     print('Turning convergence detection on')
 
         if detect_convergence:
-            assert 0 < convergence_threshold < 1
+            assert 0 < thresh < 1
 
         # Print message explaining parameter choices.
         if verbose:
@@ -148,7 +137,7 @@ class KernelEstimator:
 
         # Estimate v({}) and v(D) for constraints.
         v0, v1 = estimate_constraints(
-            self.model, X, Y, batch_size, self.loss_fn)
+            self.imputer, X, Y, batch_size, self.loss_fn)
 
         # Exact form for A.
         p_coaccur = (
@@ -186,9 +175,7 @@ class KernelEstimator:
                 row[inds] = 1
 
             # Make predictions.
-            y_hat = self.model(self.imputer(x, S))
-            y_hat = np.mean(y_hat.reshape(
-                -1, self.imputer.samples, *y_hat.shape[1:]), axis=1)
+            y_hat = self.imputer(x, S)
             loss = - self.loss_fn(y_hat, y) - v0
             b_temp1 = S.astype(float) * loss[:, np.newaxis]
 
@@ -196,9 +183,7 @@ class KernelEstimator:
             S = np.logical_not(S)
 
             # Make predictions.
-            y_hat = self.model(self.imputer(x, S))
-            y_hat = np.mean(y_hat.reshape(
-                -1, self.imputer.samples, *y_hat.shape[1:]), axis=1)
+            y_hat = self.imputer(x, S)
             loss = - self.loss_fn(y_hat, y) - v0
             b_temp2 = S.astype(float) * loss[:, np.newaxis]
 
@@ -218,20 +203,20 @@ class KernelEstimator:
                 # Calculate progress.
                 values, std = calculate_result(
                     A, b, v0, v1, b_sum_squares, n)
-                ratio = (np.max(std) /
-                         (max(values.max(), 0) - min(values.min(), 0)))
+                gap = values.max() - values.min()
+                ratio = np.max(std) / gap
 
                 # Print progress message.
                 if verbose:
                     if detect_convergence:
                         print('StdDev Ratio = {:.4f} (Converge at {:.4f})'.format(
-                            ratio, convergence_threshold))
+                            ratio, thresh))
                     else:
                         print('StdDev Ratio = {:.4f}'.format(ratio))
 
                 # Check for convergence.
                 if detect_convergence:
-                    if ratio < convergence_threshold:
+                    if ratio < thresh:
                         if verbose:
                             print('Detected convergence')
 
@@ -244,7 +229,7 @@ class KernelEstimator:
                 # Update convergence estimation.
                 if bar and estimate_convergence:
                     std_est = ratio * np.sqrt(it + 1)
-                    n_est = (std_est / convergence_threshold) ** 2
+                    n_est = (std_est / thresh) ** 2
                     bar.n = np.around((it + 1) / n_est, 4)
                     bar.refresh()
 

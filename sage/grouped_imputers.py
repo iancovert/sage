@@ -1,6 +1,6 @@
 import numpy as np
 import warnings
-from copy import deepcopy
+from sage import utils
 
 
 def verify_nonoverlapping(groups):
@@ -9,148 +9,95 @@ def verify_nonoverlapping(groups):
     return np.all(np.unique(used_inds, return_counts=True)[1] == 1)
 
 
-def finalize_groups(groups, input_size, remaining_features):
-    '''Determine how to handle remaining features.'''
-    assert remaining_features in ('split', 'group', 'ignore')
-    remaining = np.setdiff1d(list(range(input_size)), np.concatenate(groups))
-    if len(remaining) > 0:
-        if remaining_features == 'split':
-            for ind in remaining:
-                groups.append([ind])
-        elif remaining_features == 'group':
-            groups.append(remaining_features)
-    return groups
-
-
-class GroupedReferenceImputer:
-    '''
-    Impute grouped features using reference values.
-
-    Args:
-      reference: the reference value for replacing missing features.
-      groups: feature groups (list of lists).
-      remaining_features: how to handle features that are not group members.
-    '''
-    def __init__(self, reference, groups, remaining_features='split'):
-        if reference.ndim == 1:
-            reference = reference[np.newaxis]
-        elif reference.ndim == 2:
-            if reference.shape[0] > 1:
-                raise ValueError('expecting one set of reference values, '
-                                 'got {}'.format(reference.shape[0]))
-        self.reference = reference
-        self.reference_repeat = self.reference
-        self.samples = 1
+class GroupedImputer:
+    '''GroupedImputer base class.'''
+    def __init__(self, model, groups, total, remaining_features):
+        self.model = utils.model_conversion(model)
 
         # Verify that groups are non-overlapping.
-        input_size = reference.shape[1]
-        groups = deepcopy(groups)
-        nonoverlapping = verify_nonoverlapping(groups)
-        if not nonoverlapping:
+        if not verify_nonoverlapping(groups):
             raise ValueError('groups must be non-overlapping')
 
-        # Handle remaining features.
-        groups = finalize_groups(groups, input_size, remaining_features)
-        self.groups = groups
-        self.num_groups = len(groups)
-
         # Groups matrix.
-        self.groups_mat = np.zeros((len(groups), input_size), dtype=bool)
+        self.groups_mat = np.zeros((len(groups) + 1, total), dtype=bool)
         for i, group in enumerate(groups):
             self.groups_mat[i, group] = 1
+        self.groups_mat[-1, :] = 1 - np.sum(self.groups_mat, axis=0)
+
+        # For features that are not specified in any group.
+        self.remaining = remaining_features
 
     def __call__(self, x, S):
-        # Repeat reference.
-        if len(self.reference_repeat) != len(x):
-            self.reference_repeat = self.reference.repeat(len(x), 0)
+        '''Calling a GroupedImputer should evaluate the model with the
+        specified subset of features.'''
+        raise NotImplementedError
 
-        # Convert groups to feature indices.
-        S = np.matmul(S, self.groups_mat)
+    def inclusion_matrix(self, S):
+        S = np.hstack((S, np.zeros((len(S), 1), dtype=bool)))
+        S[:, -1] = self.remaining
+        return np.matmul(S, self.groups_mat)
 
+
+class GroupedDefaultImputer(GroupedImputer):
+    '''Replace features with default values.'''
+    def __init__(self, model, values, groups, remaining_features=0):
+        super().__init__(model, groups, values.shape[-1], remaining_features)
+        if values.ndim == 1:
+            values = values[np.newaxis]
+        elif values[0] != 1:
+            raise ValueError('values shape must be (dim,) or (1, dim)')
+        self.values = values
+        self.values_repeat = values
+        self.num_groups = len(groups)
+
+    def __call__(self, x, S):
+        # Prepare x.
+        if len(x) != len(self.values_repeat):
+            self.values_repeat = self.values.repeat(len(x), 0)
+
+        # Prepare S.
+        S = self.inclusion_matrix(S)
+
+        # Replace specified indices.
         x_ = x.copy()
-        x_[~S] = self.reference.repeat(len(x), 0)[~S]
-        return x_
+        x_[~S] = self.values_repeat[~S]
+
+        # Make predictions.
+        return self.model(x_)
 
 
-class GroupedMarginalImputer:
-    '''
-    Impute grouped features using either a fixed set of background examples, or
-    a sampled set of background examples.
-
-    Args:
-      data: np.ndarray of size (samples, dimensions) representing the data
-        distribution.
-      groups: feature groups (list of lists).
-      remaining_features: how to handle features that are not group members.
-    '''
-    def __init__(self, data, groups, samples=None, remaining_features='split'):
+class GroupedMarginalImputer(GroupedImputer):
+    '''Marginalizing out removed features with their marginal distribution.'''
+    def __init__(self, model, data, groups, remaining_features=0):
+        super().__init__(model, groups, data.shape[1], remaining_features)
         self.data = data
-        self.N = len(data)
-
-        if samples is None:
-            samples = self.N
-        elif not samples < self.N:
-            raise ValueError('The specified number of samples ({}) for '
-                             'GroupedMarginalImputer should be less than the '
-                             'length of the dataset ({}). Either use a smaller '
-                             'number of samples, or set samples=None to use '
-                             'all examples'.format(samples, self.N))
-        self.samples = samples
-
-        # For saving time during imputation.
-        self.x_addr = None
-        self.x_repeat = None
-        if samples == self.N:
-            self.data_tiled = data
-
-        # Check if there are too many samples.
-        if samples > 512:
-            warnings.warn('using {} background samples will make estimators '
-                          'run slowly, recommendation is to use <= 512'.format(
-                            samples), RuntimeWarning)
-
-        # Verify that groups are non-overlapping.
-        input_size = data.shape[1]
-        groups = deepcopy(groups)
-        nonoverlapping = verify_nonoverlapping(groups)
-        if not nonoverlapping:
-            raise ValueError('groups must be non-overlapping')
-
-        # Handle remaining features.
-        groups = finalize_groups(groups, input_size, remaining_features)
-        self.groups = groups
+        self.data_repeat = data
+        self.samples = len(data)
         self.num_groups = len(groups)
 
-        # Groups matrix.
-        self.groups_mat = np.zeros((len(groups), input_size), dtype=bool)
-        for i, group in enumerate(groups):
-            self.groups_mat[i, group] = 1
+        if len(data) > 1024:
+            warnings.warn('using {} background samples may lead to slow '
+                          'runtime, consider using <= 1024'.format(
+                            len(data)), RuntimeWarning)
 
     def __call__(self, x, S):
-        # Repeat x.
+        # Prepare x.
         n = len(x)
-        if self.x_addr == id(x):
-            x = self.x_repeat
-        else:
-            self.x_addr = id(x)
-            x = x.repeat(self.samples, 0)
-            self.x_repeat = x
+        x = x.repeat(self.samples, 0)
 
-        # Prepare background samples.
-        if self.N == self.samples:
-            # Repeat data.
-            if len(self.data_tiled) != (self.samples * n):
-                self.data_tiled = np.tile(self.data, (n, 1))
-            samples = self.data_tiled
-        else:
-            # Draw samples from marginal distribution.
-            samples = self.data[np.random.choice(self.N, len(x), replace=True)]
-
-        # Convert groups to feature indices.
-        S = np.matmul(S, self.groups_mat)
-
-        # Replace specified features.
+        # Prepare S.
+        S = self.inclusion_matrix(S)
         S = S.repeat(self.samples, 0)
+
+        # Prepare samples.
+        if len(self.data_repeat) != self.samples * n:
+            self.data_repeat = np.tile(self.data, (n, 1))
+
+        # Replace specified indices.
         x_ = x.copy()
-        x_[~S] = samples[~S]
-        return x_
+        x_[~S] = self.data_repeat[~S]
+
+        # Make predictions.
+        pred = self.model(x_)
+        pred = pred.reshape(-1, self.samples, *pred.shape[1:])
+        return np.mean(pred, axis=1)
