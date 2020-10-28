@@ -38,7 +38,7 @@ feature_names = ...
 # Get model
 model = ...
 
-# Set up imputer to represent the data distribution
+# Set up imputer to accommodate missing features
 imputer = sage.MarginalImputer(model, x[:512])
 
 # Set up estimator
@@ -67,6 +67,7 @@ The result will look something like this.
 - [Airbnb](https://github.com/iancovert/sage/blob/master/notebooks/airbnb.ipynb) shows an example of calculating SAGE values with grouped features (using a PyTorch MLP).
 - [Bank](https://github.com/iancovert/sage/blob/master/notebooks/bank.ipynb) shows a model monitoring example that uses SAGE to identify features that hurt the model's performance (using CatBoost).
 - [MNIST](https://github.com/iancovert/sage/blob/master/notebooks/mnist.ipynb) shows several strategies to accelerate convergence for datasets with many features (feature grouping, different imputing setups).
+- If you want to replicate any of the experiments described in our paper, see this separate [repository](https://github.com/iancovert/sage-experiments).
 
 ## Authors
 

@@ -20,6 +20,7 @@ setuptools.setup(
     packages=['sage'],
     install_requires=[
         'numpy',
+        'scipy',
         'matplotlib',
         'tqdm'
     ],
