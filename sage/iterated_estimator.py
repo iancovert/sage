@@ -8,19 +8,19 @@ def estimate_total(imputer, X, Y, batch_size, loss_fn):
     N = 0
     mean_loss = 0
     marginal_loss = 0
-    num_groups = imputer.num_groups
+    num_features = imputer.num_groups
     for i in range(np.ceil(len(X) / batch_size).astype(int)):
         x = X[i * batch_size:(i + 1) * batch_size]
         y = Y[i * batch_size:(i + 1) * batch_size]
         N += len(x)
 
         # All features.
-        pred = imputer(x, np.ones((len(x), num_groups), dtype=bool))
+        pred = imputer(x, np.ones((len(x), num_features), dtype=bool))
         loss = loss_fn(pred, y)
         mean_loss += np.sum(loss - mean_loss) / N
 
         # No features.
-        pred = imputer(x, np.zeros((len(x), num_groups), dtype=bool))
+        pred = imputer(x, np.zeros((len(x), num_features), dtype=bool))
         loss = loss_fn(pred, y)
         marginal_loss += np.sum(loss - marginal_loss) / N
 
@@ -30,16 +30,16 @@ def estimate_total(imputer, X, Y, batch_size, loss_fn):
 def estimate_holdout_importance(imputer, X, Y, batch_size, loss_fn, batches):
     '''Roughly estimate impact of holding out features individually.'''
     N, _ = X.shape
-    num_groups = imputer.num_groups
-    holdout_importance = np.zeros(num_groups)
-    S = np.ones((batch_size, num_groups), dtype=bool)
+    num_features = imputer.num_groups
+    holdout_importance = np.zeros(num_features)
+    S = np.ones((batch_size, num_features), dtype=bool)
 
     # Performance with all features.
     mb = np.random.choice(N, batch_size)
     all_loss = np.mean(loss_fn(imputer(X[mb], S), Y[mb]))
 
     # Hold out each feature individually.
-    for i in range(num_groups):
+    for i in range(num_features):
         S[:, i] = 0
         loss_list = []
 
@@ -120,11 +120,6 @@ class IteratedEstimator:
         X, Y = utils.verify_model_data(self.imputer, X, Y, self.loss_fn,
                                        batch_size)
 
-        # For setting up bar.
-        estimate_convergence = n_samples is None
-        if estimate_convergence and verbose:
-            print('Estimating convergence time')
-
         # Possibly force convergence detection.
         if n_samples is None:
             n_samples = 1e20
@@ -135,11 +130,6 @@ class IteratedEstimator:
 
         if detect_convergence:
             assert 0 < thresh < 1
-
-        # Print message explaining parameter choices.
-        if verbose:
-            print('Batch size = batch * samples = {}'.format(
-                batch_size * self.imputer.samples))
 
         # For detecting convergence.
         total = estimate_total(self.imputer, X, Y, batch_size, self.loss_fn)
@@ -162,7 +152,7 @@ class IteratedEstimator:
         # Set up bar.
         n_loops = int(n_samples / batch_size)
         if bar:
-            if estimate_convergence:
+            if detect_convergence:
                 bar = tqdm(total=1)
             else:
                 bar = tqdm(total=n_loops * batch_size * num_features)
@@ -191,7 +181,7 @@ class IteratedEstimator:
 
                 # Calculate delta sample.
                 tracker.update(loss_discluded - loss_included)
-                if bar and (not estimate_convergence):
+                if bar and (not detect_convergence):
                     bar.update(batch_size)
 
                 # Calculate progress.
@@ -224,10 +214,9 @@ class IteratedEstimator:
                         break
 
                 # Update convergence estimation.
-                if bar and estimate_convergence:
-                    std_est = ratio * np.sqrt(it + 1)
-                    n_est = (std_est / thresh) ** 2
-                    bar.n = np.around((i + (it + 1) / n_est) / num_features, 4)
+                if bar and detect_convergence:
+                    N_est = (it + 1) * (ratio / thresh) ** 2
+                    bar.n = np.around((i + (it + 1) / N_est) / num_features, 4)
                     bar.refresh()
 
             if verbose:

@@ -59,11 +59,6 @@ class PermutationEstimator:
         X, Y = utils.verify_model_data(self.imputer, X, Y, self.loss_fn,
                                        batch_size)
 
-        # For setting up bar.
-        estimate_convergence = n_permutations is None
-        if estimate_convergence and verbose:
-            print('Estimating convergence time')
-
         # Possibly force convergence detection.
         if n_permutations is None:
             n_permutations = 1e20
@@ -75,15 +70,10 @@ class PermutationEstimator:
         if detect_convergence:
             assert 0 < thresh < 1
 
-        # Print message explaining parameter choices.
-        if verbose:
-            print('Batch size = batch * samples = {}'.format(
-                batch_size * self.imputer.samples))
-
         # Set up bar.
         n_loops = int(n_permutations / batch_size)
         if bar:
-            if estimate_convergence:
+            if detect_convergence:
                 bar = tqdm(total=1)
             else:
                 bar = tqdm(total=n_loops * batch_size * num_features)
@@ -122,7 +112,9 @@ class PermutationEstimator:
                 # Calculate delta sample.
                 scores[arange, inds] = prev_loss - loss
                 prev_loss = loss
-                if bar and (not estimate_convergence):
+
+                # Update bar (if not detecting convergence).
+                if bar and (not detect_convergence):
                     bar.update(batch_size)
 
             # Update tracker.
@@ -154,10 +146,9 @@ class PermutationEstimator:
                     break
 
             # Update convergence estimation.
-            if bar and estimate_convergence:
-                std_est = ratio * np.sqrt(it + 1)
-                n_est = (std_est / thresh) ** 2
-                bar.n = np.around((it + 1) / n_est, 4)
+            if bar and detect_convergence:
+                N_est = (it + 1) * (ratio / thresh) ** 2
+                bar.n = np.around((it + 1) / N_est, 4)
                 bar.refresh()
 
         if bar:
