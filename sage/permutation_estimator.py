@@ -122,7 +122,7 @@ class PermutationEstimator:
 
             # Calculate progress.
             std = np.max(tracker.std)
-            gap = tracker.values.max() - tracker.values.min()
+            gap = max(tracker.values.max() - tracker.values.min(), 1e-12)
             ratio = std / gap
 
             # Print progress message.

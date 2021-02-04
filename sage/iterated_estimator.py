@@ -185,10 +185,11 @@ class IteratedEstimator:
                     bar.update(batch_size)
 
                 # Calculate progress.
-                std = tracker.std
+                std = tracker.std.item()
                 gap = (
                     max(upper_val, tracker.values.item()) -
                     min(lower_val, tracker.values.item()))
+                gap = max(gap, 1e-12)
                 ratio = std / gap
 
                 # Print progress message.

@@ -53,6 +53,7 @@ def calculate_result(A, b, v0, v1, b_sum_squares, n):
     try:
         b_sum_squares = 0.5 * (b_sum_squares + b_sum_squares.T)
         b_cov = b_sum_squares / (n ** 2)
+        # TODO this fails in situations where model is invariant to features.
         cholesky = np.linalg.cholesky(b_cov)
         L = (
             np.linalg.solve(A, cholesky) +
@@ -204,7 +205,8 @@ class KernelEstimator:
                 # Calculate progress.
                 values, std = calculate_result(
                     A, b, v0, v1, b_sum_squares, n)
-                ratio = np.max(std) / (values.max() - values.min())
+                gap = max(values.max() - values.min(), 1e-12)
+                ratio = std.max() / gap
 
                 # Print progress message.
                 if verbose:
