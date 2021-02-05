@@ -4,7 +4,7 @@ from sage import plotting
 
 
 class Explanation:
-    '''For storing and plotting SAGE values.'''
+    '''For storing and plotting Explanations.'''
     def __init__(self, values, std, explanation_type='SAGE'):
         self.values = values
         self.std = std
@@ -98,6 +98,43 @@ class Explanation:
             sort_features, max_features, orientation, error_bars,
             confidence_level, capsize, colors, title, title_size, tick_size,
             tick_rotation, label_size, legend_loc, figsize, return_fig)
+
+    def plot_sign(self,
+                  feature_names,
+                  sort_features=True,
+                  max_features=np.inf,
+                  orientation='horizontal',
+                  confidence_level=0.95,
+                  capsize=5,
+                  title='Feature Importance Sign',
+                  title_size=20,
+                  tick_size=16,
+                  tick_rotation=None,
+                  label_size=16,
+                  figsize=(10, 7),
+                  return_fig=False):
+        '''
+        Plot SAGE values, focusing on their sign.
+
+        Args:
+          feature_names: list of feature names.
+          sort_features: whether to sort features by their SAGE values.
+          max_features: number of features to display.
+          orientation: horizontal (default) or vertical.
+          confidence_level: confidence interval coverage (e.g., 95%).
+          capsize: error bar cap width.
+          title: plot title.
+          title_size: font size for title.
+          tick_size: font size for feature names and numerical values.
+          tick_rotation: tick rotation for feature names (vertical plots only).
+          label_size: font size for label.
+          figsize: figure size (if fig is None).
+          return_fig: whether to return matplotlib figure object.
+        '''
+        return plotting.plot_sign(
+            self, feature_names, sort_features, max_features, orientation,
+            confidence_level, capsize, title, title_size, tick_size,
+            tick_rotation, label_size, figsize, return_fig)
 
     def save(self, filename):
         '''Save Explanation object.'''

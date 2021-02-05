@@ -1,6 +1,7 @@
 import numpy as np
 from sage import utils, core
 from tqdm.auto import tqdm
+from scipy.stats import norm
 
 
 def estimate_total(imputer, X, Y, batch_size, loss_fn):
@@ -56,9 +57,10 @@ def estimate_holdout_importance(imputer, X, Y, batch_size, loss_fn, batches):
     return holdout_importance - all_loss
 
 
-class IteratedEstimator:
+class SignEstimator:
     '''
-    Estimate SAGE values one at a time by sampling subsets of features.
+    Estimate SAGE values to a lower precision, focusing on the sign. Based on
+    the IteratedEstimator strategy of calculating values one at a time.
 
     Args:
       imputer: model that accommodates held out features.
@@ -74,9 +76,8 @@ class IteratedEstimator:
                  X,
                  Y=None,
                  batch_size=512,
-                 detect_convergence=True,
-                 thresh=0.025,
-                 n_samples=None,
+                 sign_confidence=0.99,
+                 narrow_thresh=0.025,
                  optimize_ordering=True,
                  ordering_batches=1,
                  verbose=False,
@@ -89,20 +90,19 @@ class IteratedEstimator:
           Y: target data. If None, model output will be used.
           batch_size: number of examples to be processed in parallel, should be
             set to a large value.
-          detect_convergence: whether to stop when approximately converged.
-          thresh: threshold for determining convergence
-          n_samples: number of samples to take per feature.
+          sign_confidence: confidence level on sign.
+          narrow_thresh: threshold for detecting that the standard deviation is
+            small enough
           optimize_ordering: whether to guess an ordering of features based on
             importance. May accelerate convergence.
           ordering_batches: number of minibatches while determining ordering.
           verbose: print progress messages.
           bar: display progress bar.
 
-        The default behavior is to detect each feature's convergence based on
-        the ratio of its standard deviation to the gap between the largest and
-        smallest values. Since neither value is known initially, we begin with
-        estimates (upper_val, lower_val) and update them as more features are
-        analyzed.
+        Convergence for each SAGE value is detected when one of two conditions
+        holds: (1) the sign is known with high confidence (given by
+        sign_confidence), or (2) the standard deviation of the Gaussian
+        confidence interval is sufficiently narrow (given by narrow_thresh).
 
         Returns: Explanation object.
         '''
@@ -118,21 +118,15 @@ class IteratedEstimator:
         X, Y = utils.verify_model_data(self.imputer, X, Y, self.loss_fn,
                                        batch_size)
 
-        # Possibly force convergence detection.
-        if n_samples is None:
-            n_samples = 1e20
-            if not detect_convergence:
-                detect_convergence = True
-                if verbose:
-                    print('Turning convergence detection on')
-
-        if detect_convergence:
-            assert 0 < thresh < 1
+        # Verify thresholds.
+        assert 0 < narrow_thresh < 1
+        assert 0.9 <= sign_confidence < 1
+        sign_thresh = 1 / norm.ppf(sign_confidence)
 
         # For detecting convergence.
         total = estimate_total(self.imputer, X, Y, batch_size, self.loss_fn)
         upper_val = max(total / num_features, 0)
-        lower_val = 0
+        lower_val = min(total / num_features, 0)
 
         # Feature ordering.
         if optimize_ordering:
@@ -148,18 +142,16 @@ class IteratedEstimator:
             ordering = list(range(num_features))
 
         # Set up bar.
-        n_loops = int(n_samples / batch_size)
         if bar:
-            if detect_convergence:
-                bar = tqdm(total=1)
-            else:
-                bar = tqdm(total=n_loops * batch_size * num_features)
+            bar = tqdm(total=1)
 
         # Iterated sampling.
         tracker_list = []
         for i, ind in enumerate(ordering):
             tracker = utils.ImportanceTracker()
-            for it in range(n_loops):
+            it = 0
+            converged = False
+            while not converged:
                 # Sample data.
                 mb = np.random.choice(N, batch_size)
                 x = X[mb]
@@ -179,44 +171,42 @@ class IteratedEstimator:
 
                 # Calculate delta sample.
                 tracker.update(loss_discluded - loss_included)
-                if bar and (not detect_convergence):
-                    bar.update(batch_size)
 
                 # Calculate progress.
+                val = tracker.values.item()
                 std = tracker.std.item()
-                gap = (
-                    max(upper_val, tracker.values.item()) -
-                    min(lower_val, tracker.values.item()))
-                gap = max(gap, 1e-12)
-                ratio = std / gap
+                gap = max(max(upper_val, val) - min(lower_val, val), 1e-12)
+                converged_sign = (std / max(np.abs(val), 1e-12)) < sign_thresh
+                converged_narrow = (std / gap) < narrow_thresh
 
                 # Print progress message.
                 if verbose:
-                    if detect_convergence:
-                        print('StdDev Ratio = {:.4f} '
-                              '(Converge at {:.4f})'.format(
-                               ratio, thresh))
-                    else:
-                        print('StdDev Ratio = {:.4f}'.format(ratio))
+                    print('Sign Ratio = {:.4f} (Converge at {:.4f}), '
+                          'Narrow Ratio = {:.4f} (Converge at {:.4f})'.format(
+                             std / np.abs(val), sign_thresh,
+                             std / gap, narrow_thresh))
 
                 # Check for convergence.
-                if detect_convergence:
-                    if ratio < thresh:
-                        if verbose:
-                            print('Detected feature convergence')
+                converged = converged_sign or converged_narrow
+                if converged:
+                    if verbose:
+                        print('Detected feature convergence')
 
-                        # Skip bar ahead.
-                        if bar:
-                            bar.n = np.around(
-                                bar.total * (i + 1) / num_features, 4)
-                            bar.refresh()
-                        break
+                    # Skip bar ahead.
+                    if bar:
+                        bar.n = np.around(bar.total * (i+1) / num_features, 4)
+                        bar.refresh()
 
                 # Update convergence estimation.
-                if bar and detect_convergence:
-                    N_est = (it + 1) * (ratio / thresh) ** 2
-                    bar.n = np.around((i + (it + 1) / N_est) / num_features, 4)
+                elif bar:
+                    N_sign = (it+1) * ((std / np.abs(val)) / sign_thresh) ** 2
+                    N_narrow = (it+1) * ((std / gap) / narrow_thresh) ** 2
+                    N_est = min(N_sign, N_narrow)
+                    bar.n = np.around((i + (it+1) / N_est) / num_features, 4)
                     bar.refresh()
+
+                # Increment iteration variable.
+                it += 1
 
             if verbose:
                 print('Done with feature {}'.format(i))

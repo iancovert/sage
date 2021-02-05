@@ -45,6 +45,9 @@ def plot(explanation,
     if feature_names is None:
         feature_names = ['Feature {}'.format(i) for i in
                          range(len(explanation.values))]
+    else:
+        if isinstance(feature_names, list):
+            feature_names = np.array(feature_names)
 
     # Sort features if necessary.
     if len(feature_names) > max_features:
@@ -57,7 +60,7 @@ def plot(explanation,
         argsort = np.argsort(values)[::-1]
         values = values[argsort]
         std = std[argsort]
-        feature_names = np.array(feature_names)[argsort]
+        feature_names = feature_names[argsort]
 
     # Remove extra features if necessary.
     if len(feature_names) > max_features:
@@ -188,6 +191,9 @@ def comparison_plot(comparison_explanations,
     if feature_names is None:
         feature_names = ['Feature {}'.format(i) for i in
                          range(len(comparison_explanations[0].values))]
+    else:
+        if isinstance(feature_names, list):
+            feature_names = np.array(feature_names)
 
     # Default comparison names.
     num_comps = len(comparison_explanations)
@@ -223,7 +229,7 @@ def comparison_plot(comparison_explanations,
         argsort = np.argsort(values[0])[::-1]
         values = [sage_values[argsort] for sage_values in values]
         std = [stddev[argsort] for stddev in std]
-        feature_names = np.array(feature_names)[argsort]
+        feature_names = feature_names[argsort]
 
     # Remove extra features if necessary.
     if len(feature_names) > max_features:
@@ -308,6 +314,170 @@ def comparison_plot(comparison_explanations,
     ax.spines['top'].set_visible(False)
 
     plt.legend(loc=legend_loc, fontsize=label_size)
+    ax.set_title(title, fontsize=title_size)
+    plt.tight_layout()
+
+    if return_fig:
+        return fig
+    else:
+        return
+
+
+def plot_sign(explanation,
+              feature_names,
+              sort_features=True,
+              max_features=np.inf,
+              orientation='horizontal',
+              confidence_level=0.95,
+              capsize=5,
+              title='Feature Importance Sign',
+              title_size=20,
+              tick_size=16,
+              tick_rotation=None,
+              label_size=16,
+              figsize=(10, 7),
+              return_fig=False):
+    '''
+    Plot SAGE values, focusing on their sign.
+
+    Args:
+      explanation: Explanation object.
+      feature_names: list of feature names.
+      sort_features: whether to sort features by their SAGE values.
+      max_features: number of features to display.
+      orientation: horizontal (default) or vertical.
+      confidence_level: confidence interval coverage (e.g., 95%).
+      capsize: error bar cap width.
+      title: plot title.
+      title_size: font size for title.
+      tick_size: font size for feature names and numerical values.
+      tick_rotation: tick rotation for feature names (vertical plots only).
+      label_size: font size for label.
+      figsize: figure size (if fig is None).
+      return_fig: whether to return matplotlib figure object.
+    '''
+    # Default feature names.
+    if feature_names is None:
+        feature_names = ['Feature {}'.format(i) for i in
+                         range(len(explanation.values))]
+    else:
+        if isinstance(feature_names, list):
+            feature_names = np.array(feature_names)
+
+    # Find confidence interval width.
+    values = explanation.values
+    std = explanation.std
+    assert 0 < confidence_level < 1
+    std = std * norm.ppf(0.5 + confidence_level / 2)
+
+    # Set colors.
+    colors = []
+    for val, width in zip(values, std):
+        if val > 0 and val - width > 0:
+            colors.append('tab:green')
+        elif val < 0 and val + width < 0:
+            colors.append('tab:red')
+        else:
+            colors.append('tab:blue')
+    colors = np.array(colors)
+
+    # Sort features if necessary.
+    if len(feature_names) > max_features:
+        sort_features = True
+
+    # Remove extra features if necessary.
+    if len(feature_names) > max_features:
+        # Sort by magnitude.
+        argsort = np.argsort(np.abs(values))[::-1]
+        values = values[argsort]
+        std = std[argsort]
+        feature_names = feature_names[argsort]
+        colors = colors[argsort]
+
+        # Keep highest magnitude features.
+        new_value = np.sum(values[max_features:])
+        new_std = np.sum(std[max_features:] ** 2) ** 0.5
+        values = np.array(list(values[:max_features]) + [new_value])
+        std = np.array(list(std[:max_features]) + [new_std])
+        colors = np.array(list(colors[:max_features]) + ['tab:purple'])
+        feature_names = np.array(list(feature_names[:max_features])
+                                 + ['Remaining Features'])
+
+    # Perform sorting.
+    if sort_features:
+        argsort = np.argsort(values)[::-1]
+        values = values[argsort]
+        std = std[argsort]
+        feature_names = feature_names[argsort]
+        colors = colors[argsort]
+
+    # Warn if too many features.
+    if len(feature_names) > 50:
+        warnings.warn('Plotting {} features may make figure too crowded, '
+                      'consider using max_features'.format(
+                        len(feature_names)), Warning)
+
+    # Make plot.
+    fig = plt.figure(figsize=figsize)
+    ax = fig.gca()
+
+    if orientation == 'horizontal':
+        # Bar chart.
+        ax.barh(np.arange(len(feature_names))[::-1], std,
+                left=values - std, color=colors, edgecolor='black',
+                linewidth=0.5)
+        ax.barh(np.arange(len(feature_names))[::-1], std,
+                left=values, color=colors, edgecolor='black',
+                linewidth=0.5)
+        ax.axvline(0, color='black', linewidth=0.5)
+
+        # Feature labels.
+        if tick_rotation is not None:
+            raise ValueError('rotation not supported for horizontal charts')
+        ax.set_yticks(np.arange(len(feature_names))[::-1])
+        ax.set_yticklabels(feature_names, fontsize=label_size)
+
+        # Axis labels and ticks.
+        ax.set_ylabel('')
+        ax.set_xlabel('{} value'.format(explanation.explanation_type),
+                      fontsize=label_size)
+        ax.tick_params(axis='x', labelsize=tick_size)
+
+    elif orientation == 'vertical':
+        # Bar chart.
+        ax.bar(np.arange(len(feature_names)), std, bottom=values - std,
+               color=colors, edgecolor='black', linewidth=0.5)
+        ax.bar(np.arange(len(feature_names)), std, bottom=values,
+               color=colors, edgecolor='black', linewidth=0.5)
+        ax.axhline(0, color='black', linewidth=0.5)
+
+        # Feature labels.
+        if tick_rotation is None:
+            tick_rotation = 45
+        if tick_rotation < 90:
+            ha = 'right'
+            rotation_mode = 'anchor'
+        else:
+            ha = 'center'
+            rotation_mode = 'default'
+        ax.set_xticks(np.arange(len(feature_names)))
+        ax.set_xticklabels(feature_names, rotation=tick_rotation, ha=ha,
+                           rotation_mode=rotation_mode,
+                           fontsize=label_size)
+
+        # Axis labels and ticks.
+        ax.set_ylabel('{} value'.format(explanation.explanation_type),
+                      fontsize=label_size)
+        ax.set_xlabel('')
+        ax.tick_params(axis='y', labelsize=tick_size)
+
+    else:
+        raise ValueError('orientation must be horizontal or vertical')
+
+    # Remove spines.
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+
     ax.set_title(title, fontsize=title_size)
     plt.tight_layout()
 

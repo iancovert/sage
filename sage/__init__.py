@@ -6,3 +6,4 @@ from .grouped_imputers import GroupedDefaultImputer, GroupedMarginalImputer
 from .permutation_estimator import PermutationEstimator
 from .iterated_estimator import IteratedEstimator
 from .kernel_estimator import KernelEstimator
+from .sign_estimator import SignEstimator
