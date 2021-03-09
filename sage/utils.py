@@ -154,6 +154,11 @@ class MSELoss:
         # Add dimension if necessary.
         if target.shape[-1] == 1 and len(target.shape) - len(pred.shape) == 1:
             pred = np.expand_dims(pred, -1)
+        elif pred.shape[-1] == 1 and len(pred.shape) - len(target.shape) == 1:
+            target = np.expand_dims(target, -1)
+        elif not target.shape == pred.shape:
+            raise ValueError('shape mismatch, pred has shape {} and target '
+                             'has shape {}'.format(pred.shape, target.shape))
         loss = np.sum(
             np.reshape((pred - target) ** 2, (len(pred), -1)), axis=1)
         if self.reduction == 'mean':
