@@ -123,13 +123,37 @@ class ImportanceTracker:
         self.sum_squares = 0
         self.N = 0
 
-    def update(self, scores):
-        '''Update mean and sum of squares using Welford's algorithm.'''
-        self.N += len(scores)
-        diff = scores - self.mean
-        self.mean += np.sum(diff, axis=0) / self.N
-        diff2 = scores - self.mean
-        self.sum_squares += np.sum(diff * diff2, axis=0)
+    def update(self, scores, num_samples=None):
+        '''
+        Update mean and sum of squares using Welford's algorithm.
+
+        Args:
+          scores: array of consisting of n samples with shape (n, dim).
+          num_samples: array of size (dim,) representing the number of samples
+            for each dimension. For sparse updates, with void samples
+            represented by zeros.
+        '''
+        if num_samples is None:
+            # Welford's algorithm.
+            self.N += len(scores)
+            diff = scores - self.mean
+            self.mean += np.sum(diff, axis=0) / self.N
+            diff2 = scores - self.mean
+            self.sum_squares += np.sum(diff * diff2, axis=0)
+        else:
+            # Welford's algorithm with correction for void samples.
+            assert num_samples.shape == scores.shape[1:]
+            self.N = self.N + num_samples
+            num_void = len(scores) - num_samples
+            orig_mean = np.copy(self.mean)
+            diff = scores - self.mean
+            self.mean += (
+                np.sum(diff, axis=0) +
+                self.mean * num_void) / np.maximum(self.N, 1)
+            diff2 = scores - self.mean
+            self.sum_squares += (
+                np.sum(diff * diff2, axis=0) -
+                orig_mean * self.mean * num_void)
 
     @property
     def values(self):
@@ -137,7 +161,8 @@ class ImportanceTracker:
 
     @property
     def var(self):
-        return self.sum_squares / (self.N ** 2)
+        # print('sum_squares', self.sum_squares)
+        return self.sum_squares / (np.maximum(self.N, 1) ** 2)
 
     @property
     def std(self):

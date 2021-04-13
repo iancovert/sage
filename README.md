@@ -26,7 +26,7 @@ pip install .
 
 ## Usage
 
-SAGE is model-agnostic, so you can use it with any kind of machine learning model (linear models, GBMs, neural networks, etc). All you need to do is set up an imputer to handle held out features and run a Shapley value estimator:
+SAGE is model-agnostic, so you can use it with any kind of machine learning model (linear models, GBMs, neural networks, etc). All you need to do is set up an imputer to handle held out features, and then run a Shapley value estimator:
 
 ```python
 import sage
@@ -70,6 +70,7 @@ Check out the following notebooks to get started:
 - [Airbnb](https://github.com/iancovert/sage/blob/master/notebooks/airbnb.ipynb) shows an example where SAGE values are calculated with grouped features (using a PyTorch MLP)
 - [Bank](https://github.com/iancovert/sage/blob/master/notebooks/bank.ipynb) shows a model monitoring example that uses SAGE to identify features that hurt the model's performance (using CatBoost)
 - [MNIST](https://github.com/iancovert/sage/blob/master/notebooks/mnist.ipynb) shows several strategies to accelerate convergence for datasets with many features (feature grouping, different imputing setups)
+- [Calibration](https://github.com/iancovert/sage/blob/master/notebooks/calibration.ipynb) verifies that SAGE's confidence intervals are representative of the uncertainty across runs
 
 If you want to replicate any experiments described in our paper, see this separate [repository](https://github.com/iancovert/sage-experiments).
 
@@ -94,9 +95,10 @@ Two types of explanations can be calculated, both based on Shapley values:
 
 ### 3. Shapley value estimator
 
-Shapley values are computationally costly to calculate, so we implemented four different estimators:
+Shapley values are computationally costly to calculate exactly, so we implemented four different estimators:
 
-1. **Permutation sampling.** This is the approach described in the original paper (see `PermutationEstimator`). 
+1. **Permutation sampling.** This is the approach described in the original paper (see `PermutationEstimator`).
+<!--This estimator has an optional argument `min_coalition` that lets you relax the Shapley value's efficiency axiom, often leading to faster importance values with similar properties to SAGE (see [Calibration](https://github.com/iancovert/sage/blob/master/notebooks/calibration.ipynb) for an example).-->
 2. **KernelSAGE.** This is a linear regression-based estimatorthat is similar to KernelSHAP (see `KernelEstimator`). It is described in this [paper](https://arxiv.org/abs/2012.01536), and the [Bank](https://github.com/iancovert/sage/blob/master/notebooks/bank.ipynb) notebook shows an example use-case.
 3. **Iterated sampling.** This is a variation on the permutation sampling approach where we calculate Shapley values for each feature sequentially (see `IteratedEstimator`). This permits faster convergence for features with low variance, but it can result in wider confidence intervals.
 4. **Sign estimation**. This method estimates SAGE values to a lower precision by focusing on their sign (i.e., whether they help or hurt performance). It is implemented in `SignEstimator`, and the [Bank](https://github.com/iancovert/sage/blob/master/notebooks/bank.ipynb) notebook shows an example.
@@ -122,3 +124,4 @@ Ian Covert, Scott Lundberg, Su-In Lee. "Explaining by Removing: A Unified Framew
 Ian Covert, Su-In Lee. "Improving KernelSHAP: Practical Shapley Value Estimation via Linear Regression." AISTATS 2021
 
 Art Owen. "Sobol' Indices and Shapley value." *SIAM 2014*
+

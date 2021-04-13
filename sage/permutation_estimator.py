@@ -24,6 +24,7 @@ class PermutationEstimator:
                  detect_convergence=True,
                  thresh=0.025,
                  n_permutations=None,
+                 min_coalition=0,
                  verbose=False,
                  bar=True):
         '''
@@ -37,6 +38,7 @@ class PermutationEstimator:
           detect_convergence: whether to stop when approximately converged.
           thresh: threshold for determining convergence.
           n_permutations: number of permutations to unroll.
+          min_coalition: minimum coalition size (int or float).
           verbose: print progress messages.
           bar: display progress bar.
 
@@ -58,6 +60,17 @@ class PermutationEstimator:
         num_features = self.imputer.num_groups
         X, Y = utils.verify_model_data(self.imputer, X, Y, self.loss_fn,
                                        batch_size)
+
+        # Determine minimum coalition size.
+        if isinstance(min_coalition, float):
+            min_coalition = int(min_coalition * num_features)
+        if min_coalition == 0:
+            sample_counts = None
+        elif 0 < min_coalition < num_features:
+            explanation_type = 'Relaxed ' + explanation_type
+        else:
+            raise ValueError('min_coalition must be at least 0, at most '
+                             'num_features - 1')
 
         # Possibly force convergence detection.
         if n_permutations is None:
@@ -81,9 +94,9 @@ class PermutationEstimator:
         # Setup.
         arange = np.arange(batch_size)
         scores = np.zeros((batch_size, num_features))
+        tracker = utils.ImportanceTracker()
 
         # Permutation sampling.
-        tracker = utils.ImportanceTracker()
         for it in range(n_loops):
             # Sample data.
             mb = np.random.choice(N, batch_size)
@@ -96,11 +109,26 @@ class PermutationEstimator:
             for i in range(batch_size):
                 np.random.shuffle(permutations[i])
 
-            # Make prediction with missing features.
+            # Calculate sample counts.
+            if min_coalition != 0:
+                scores[:] = 0
+                sample_counts = np.zeros(num_features, dtype=int)
+                for i in range(batch_size):
+                    sample_counts[permutations[i, min_coalition:]] = (
+                        sample_counts[permutations[i, min_coalition:]] + 1)
+
+            # Add necessary features to minimum coalition.
+            for i in range(min_coalition):
+                # Add next feature.
+                inds = permutations[:, i]
+                S[arange, inds] = 1
+
+            # Make prediction with minimum coalition.
             y_hat = self.imputer(x, S)
             prev_loss = self.loss_fn(y_hat, y)
 
-            for i in range(num_features):
+            # Add all remaining features.
+            for i in range(min_coalition, num_features):
                 # Add next feature.
                 inds = permutations[:, i]
                 S[arange, inds] = 1
@@ -118,7 +146,7 @@ class PermutationEstimator:
                     bar.update(batch_size)
 
             # Update tracker.
-            tracker.update(scores)
+            tracker.update(scores, sample_counts)
 
             # Calculate progress.
             std = np.max(tracker.std)
