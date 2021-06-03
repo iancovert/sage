@@ -6,9 +6,11 @@ from tqdm.auto import tqdm
 def calculate_A(num_features):
     '''Calculate A parameter's exact form.'''
     p_coaccur = (
-        (np.sum((np.arange(2, num_features) - 1) / (num_features - np.arange(2, num_features)))) /
+        (np.sum((np.arange(2, num_features) - 1)
+         / (num_features - np.arange(2, num_features)))) /
         (num_features * (num_features - 1) *
-         np.sum(1 / (np.arange(1, num_features) * (num_features - np.arange(1, num_features))))))
+         np.sum(1 / (np.arange(1, num_features)
+                * (num_features - np.arange(1, num_features))))))
     A = np.eye(num_features) * 0.5 + (1 - np.eye(num_features)) * p_coaccur
     return A
 
@@ -40,14 +42,14 @@ def estimate_constraints(imputer, X, Y, batch_size, loss_fn):
     return - marginal_loss, - mean_loss
 
 
-def calculate_result(A, b, v0, v1, b_sum_squares, n):
+def calculate_result(A, b, total, b_sum_squares, n):
     '''Calculate regression coefficients and uncertainty estimates.'''
     num_features = A.shape[1]
     A_inv_one = np.linalg.solve(A, np.ones(num_features))
     A_inv_vec = np.linalg.solve(A, b)
     values = (
         A_inv_vec -
-        A_inv_one * (np.sum(A_inv_vec) - v1 + v0) / np.sum(A_inv_one))
+        A_inv_one * (np.sum(A_inv_vec) - total) / np.sum(A_inv_one))
 
     # Calculate variance.
     try:
@@ -57,7 +59,8 @@ def calculate_result(A, b, v0, v1, b_sum_squares, n):
         cholesky = np.linalg.cholesky(b_cov)
         L = (
             np.linalg.solve(A, cholesky) +
-            np.matmul(np.outer(A_inv_one, A_inv_one), cholesky) / np.sum(A_inv_one))
+            np.matmul(np.outer(A_inv_one, A_inv_one), cholesky)
+            / np.sum(A_inv_one))
         beta_cov = np.matmul(L, L.T)
         var = np.diag(beta_cov)
         std = var ** 0.5
@@ -88,7 +91,7 @@ class KernelEstimator:
                  Y=None,
                  batch_size=512,
                  detect_convergence=True,
-                 thresh=0.01,
+                 thresh=0.025,
                  n_samples=None,
                  verbose=False,
                  bar=True,
@@ -143,9 +146,10 @@ class KernelEstimator:
         weights = 1 / (weights * (num_features - weights))
         weights = weights / np.sum(weights)
 
-        # Estimate v({}) and v(D) for constraints.
-        v0, v1 = estimate_constraints(
+        # Estimate null and grand coalition values.
+        null, grand = estimate_constraints(
             self.imputer, X, Y, batch_size, self.loss_fn)
+        total = grand - null
 
         # Set up bar.
         n_loops = int(n_samples / batch_size)
@@ -178,13 +182,13 @@ class KernelEstimator:
 
             # Calculate loss.
             y_hat = self.imputer(x, S)
-            loss = - self.loss_fn(y_hat, y) - v0
+            loss = - self.loss_fn(y_hat, y) - null
             b_orig = S.astype(float) * loss[:, np.newaxis]
 
             # Calculate loss with inverted subset (for variance reduction).
             S = np.logical_not(S)
             y_hat = self.imputer(x, S)
-            loss = - self.loss_fn(y_hat, y) - v0
+            loss = - self.loss_fn(y_hat, y) - null
             b_inv = S.astype(float) * loss[:, np.newaxis]
 
             # Welford's algorithm.
@@ -203,18 +207,17 @@ class KernelEstimator:
 
             if (it + 1) % check_every == 0:
                 # Calculate progress.
-                values, std = calculate_result(
-                    A, b, v0, v1, b_sum_squares, n)
+                values, std = calculate_result(A, b, total, b_sum_squares, n)
                 gap = max(values.max() - values.min(), 1e-12)
                 ratio = std.max() / gap
 
                 # Print progress message.
                 if verbose:
                     if detect_convergence:
-                        print('StdDev Ratio = {:.4f} (Converge at {:.4f})'.format(
-                            ratio, thresh))
+                        print(f'StdDev Ratio = {ratio:.4f} '
+                              f'(Converge at {thresh:.4f})')
                     else:
-                        print('StdDev Ratio = {:.4f}'.format(ratio))
+                        print(f'StdDev Ratio = {ratio:.4f}')
 
                 # Check for convergence.
                 if detect_convergence:
@@ -235,6 +238,6 @@ class KernelEstimator:
                     bar.refresh()
 
         # Calculate SAGE values.
-        values, std = calculate_result(A, b, v0, v1, b_sum_squares, n)
+        values, std = calculate_result(A, b, total, b_sum_squares, n)
 
         return core.Explanation(np.squeeze(values), std, explanation_type)

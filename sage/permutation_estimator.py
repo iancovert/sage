@@ -163,10 +163,10 @@ class PermutationEstimator:
             # Print progress message.
             if verbose:
                 if detect_convergence:
-                    print('StdDev Ratio = {:.4f} (Converge at {:.4f})'.format(
-                        ratio, thresh))
+                    print(f'StdDev Ratio = {ratio:.4f} '
+                          f'(Converge at {thresh:.4f})')
                 else:
-                    print('StdDev Ratio = {:.4f}'.format(ratio))
+                    print(f'StdDev Ratio = {ratio:.4f}')
 
             # Check for convergence.
             if detect_convergence:

@@ -193,9 +193,8 @@ class IteratedEstimator:
                 # Print progress message.
                 if verbose:
                     if detect_convergence:
-                        print('StdDev Ratio = {:.4f} '
-                              '(Converge at {:.4f})'.format(
-                               ratio, thresh))
+                        print(f'StdDev Ratio = {ratio:.4f} '
+                              f'(Converge at {thresh:.4f})')
                     else:
                         print('StdDev Ratio = {:.4f}'.format(ratio))
 
@@ -219,7 +218,7 @@ class IteratedEstimator:
                     bar.refresh()
 
             if verbose:
-                print('Done with feature {}'.format(i))
+                print(f'Done with feature {i}')
             tracker_list.append(tracker)
 
             # Adjust min max value.
