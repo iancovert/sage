@@ -6,19 +6,13 @@ SAGE was introduced in [this paper](https://arxiv.org/abs/2004.00668), but if yo
 
 ## Install
 
-<!--The easiest way to use the code is to install `sage-importance` with `pip`:
+The easiest way to get started is to install the `sage-importance` package with `pip`:
 
 ```bash
 pip install sage-importance
 ```
 
-Alternatively, you can clone the repository and install the package using the local `setup.py` file:
-
-```bash
-pip install .
-```-->
-
-The easiest way to get started is cloning this repository and installing the package in your Python environment:
+Alternatively, you can clone the repository and install the package in your Python environment as follows:
 
 ```bash
 pip install .
@@ -122,6 +116,6 @@ Ian Covert, Scott Lundberg, Su-In Lee. "Understanding Global Feature Contributio
 
 Ian Covert, Scott Lundberg, Su-In Lee. "Explaining by Removing: A Unified Framework for Model Explanation." *arxiv preprint:2011.14878*
 
-Ian Covert, Su-In Lee. "Improving KernelSHAP: Practical Shapley Value Estimation via Linear Regression." AISTATS 2021
+Ian Covert, Su-In Lee. "Improving KernelSHAP: Practical Shapley Value Estimation via Linear Regression." *AISTATS 2021*
 
 Art Owen. "Sobol' Indices and Shapley value." *SIAM 2014*
