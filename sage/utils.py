@@ -29,9 +29,17 @@ def model_conversion(model):
               'not, please set up nn.Sequential with nn.Sigmoid or nn.Softmax')
 
         import torch
+        model.eval()
         device = next(model.parameters()).device
         return lambda x: model(torch.tensor(
             x, dtype=torch.float32, device=device)).cpu().data.numpy()
+
+    elif safe_isinstance(model, 'tensorflow.keras.Model'):
+        print('Setting up imputer for Tensorflow model, assuming that any '
+              'necessary output activations are applied properly. If not, '
+              'please set up keras.Sequential with keras.layers.Softmax()')
+
+        return lambda x: model(x, training=False).numpy()
 
     elif callable(model):
         # Assume model is compatible function or callable object.
