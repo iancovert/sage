@@ -34,8 +34,8 @@ def model_conversion(model):
         return lambda x: model(torch.tensor(
             x, dtype=torch.float32, device=device)).cpu().data.numpy()
 
-    elif safe_isinstance(model, 'tensorflow.keras.Model'):
-        print('Setting up imputer for Tensorflow model, assuming that any '
+    elif safe_isinstance(model, 'keras.Model'):
+        print('Setting up imputer for keras model, assuming that any '
               'necessary output activations are applied properly. If not, '
               'please set up keras.Sequential with keras.layers.Softmax()')
 
