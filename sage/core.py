@@ -4,7 +4,15 @@ from sage import plotting
 
 
 class Explanation:
-    '''For storing and plotting Explanations.'''
+    '''
+    For storing and plotting Explanations.
+    
+    Args:
+      values: explanation values.
+      std: standard deviation confidence intervals for explanation values.
+      explanation_type: 'SAGE' or 'Shapley Effects' (used only for plotting).
+    '''
+
     def __init__(self, values, std, explanation_type='SAGE'):
         self.values = values
         self.std = std

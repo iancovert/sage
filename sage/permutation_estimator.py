@@ -11,8 +11,10 @@ class PermutationEstimator:
     Args:
       imputer: model that accommodates held out features.
       loss: loss function ('mse', 'cross entropy').
+      n_jobs: number of jobs for parallel processing.
       random_state: random seed, enables reproducibility.
     '''
+
     def __init__(self,
                  imputer,
                  loss='cross entropy',

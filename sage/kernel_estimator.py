@@ -83,6 +83,7 @@ class KernelEstimator:
       loss: loss function ('mse', 'cross entropy').
       random_state: random seed, enables reproducibility.
     '''
+
     def __init__(self,
                  imputer,
                  loss='cross entropy',
