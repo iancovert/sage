@@ -82,9 +82,14 @@ class KernelEstimator:
       imputer: model that accommodates held out features.
       loss: loss function ('mse', 'cross entropy').
     '''
-    def __init__(self, imputer, loss):
+    def __init__(self,
+                 imputer,
+                 loss='cross entropy',
+                 random_state=None
+                 ):
         self.imputer = imputer
         self.loss_fn = utils.get_loss(loss, reduction='none')
+        self.rng = np.random.default_rng(seed=random_state)
 
     def __call__(self,
                  X,
@@ -168,16 +173,16 @@ class KernelEstimator:
         # Sample subsets.
         for it in range(n_loops):
             # Sample data.
-            mb = np.random.choice(N, batch_size)
+            mb = self.rng.choice(N, batch_size)
             x = X[mb]
             y = Y[mb]
 
             # Sample subsets.
             S = np.zeros((batch_size, num_features), dtype=bool)
-            num_included = np.random.choice(num_features - 1, size=batch_size,
+            num_included = self.rng.choice(num_features - 1, size=batch_size,
                                             p=weights) + 1
             for row, num in zip(S, num_included):
-                inds = np.random.choice(num_features, size=num, replace=False)
+                inds = self.rng.choice(num_features, size=num, replace=False)
                 row[inds] = 1
 
             # Calculate loss.

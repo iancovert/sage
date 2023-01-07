@@ -1,3 +1,4 @@
+import joblib
 import numpy as np
 from sage import utils, core
 from tqdm.auto import tqdm
@@ -13,9 +14,14 @@ class PermutationEstimator:
     '''
     def __init__(self,
                  imputer,
-                 loss='cross entropy'):
+                 loss='cross entropy',
+                 n_jobs=1,
+                 random_state=None
+                 ):
         self.imputer = imputer
         self.loss_fn = utils.get_loss(loss, reduction='none')
+        self.n_jobs = joblib.effective_n_jobs(n_jobs)
+        self.rng = np.random.default_rng(seed=random_state)
 
     def __call__(self,
                  X,
@@ -71,12 +77,8 @@ class PermutationEstimator:
         assert min_coalition >= 0
         assert max_coalition <= num_features
         assert min_coalition < max_coalition
-        if min_coalition > 0 or max_coalition < num_features:
-            relaxed = True
-            explanation_type = 'Relaxed ' + explanation_type
-        else:
-            relaxed = False
-            sample_counts = None
+
+        explanation_type = 'Relaxed ' + explanation_type
 
         # Possibly force convergence detection.
         if n_permutations is None:
@@ -98,62 +100,29 @@ class PermutationEstimator:
                 bar = tqdm(total=n_loops * batch_size * num_features)
 
         # Setup.
-        arange = np.arange(batch_size)
-        scores = np.zeros((batch_size, num_features))
-        S = np.zeros((batch_size, num_features), dtype=bool)
-        permutations = np.tile(np.arange(num_features), (batch_size, 1))
         tracker = utils.ImportanceTracker()
 
-        # Permutation sampling.
-        for it in range(n_loops):
-            # Sample data.
-            mb = np.random.choice(N, batch_size)
-            x = X[mb]
-            y = Y[mb]
+        # Performed iterations counter.
+        it = 0
 
-            # Sample permutations.
-            S[:] = 0
-            for i in range(batch_size):
-                np.random.shuffle(permutations[i])
+        while it < n_loops:
+            # Make sure we don't perform more iterations than n_loops.
+            num_batches = min(self.n_jobs, n_loops - it)
 
-            # Calculate sample counts.
-            if relaxed:
-                scores[:] = 0
-                sample_counts = np.zeros(num_features, dtype=int)
-                for i in range(batch_size):
-                    sample_counts[permutations[i, min_coalition:max_coalition]] = (
-                        sample_counts[permutations[i, min_coalition:max_coalition]] + 1)
+            batches = []
+            for _ in range(num_batches):
+                idxs = self.rng.choice(N, batch_size)
+                batches.append((X[idxs], Y[idxs]))
 
-            # Add necessary features to minimum coalition.
-            for i in range(min_coalition):
-                # Add next feature.
-                inds = permutations[:, i]
-                S[arange, inds] = 1
+            results = joblib.Parallel(n_jobs=self.n_jobs)(
+                joblib.delayed(self._process_sample)(x, y, batch_size, num_features, min_coalition, max_coalition)
+                for x, y in batches
+            )
 
-            # Make prediction with minimum coalition.
-            y_hat = self.imputer(x, S)
-            prev_loss = self.loss_fn(y_hat, y)
+            it += self.n_jobs
 
-            # Add all remaining features.
-            for i in range(min_coalition, max_coalition):
-                # Add next feature.
-                inds = permutations[:, i]
-                S[arange, inds] = 1
-
-                # Make prediction with missing features.
-                y_hat = self.imputer(x, S)
-                loss = self.loss_fn(y_hat, y)
-
-                # Calculate delta sample.
-                scores[arange, inds] = prev_loss - loss
-                prev_loss = loss
-
-                # Update bar (if not detecting convergence).
-                if bar and (not detect_convergence):
-                    bar.update(batch_size)
-
-            # Update tracker.
-            tracker.update(scores, sample_counts)
+            for scores, sample_counts in results:
+                tracker.update(scores, sample_counts)
 
             # Calculate progress.
             std = np.max(tracker.std)
@@ -190,3 +159,44 @@ class PermutationEstimator:
             bar.close()
 
         return core.Explanation(tracker.values, tracker.std, explanation_type)
+
+    def _process_sample(self, x, y, batch_size, num_features, min_coalition, max_coalition):
+        arange = np.arange(batch_size)
+        scores = np.zeros((batch_size, num_features))
+        S = np.zeros((batch_size, num_features), dtype=bool)
+        permutations = np.tile(np.arange(num_features), (batch_size, 1))
+
+        # Sample permutations.
+        for i in range(batch_size):
+            self.rng.shuffle(permutations[i])
+
+        # Calculate sample counts.
+        sample_counts = np.zeros(num_features, dtype=int)
+        for i in range(batch_size):
+            sample_counts[permutations[i, min_coalition:max_coalition]] += 1
+
+        # Add necessary features to minimum coalition.
+        for i in range(min_coalition):
+            # Add next feature.
+            inds = permutations[:, i]
+            S[arange, inds] = 1
+
+        # Make prediction with minimum coalition.
+        y_hat = self.imputer(x, S)
+        prev_loss = self.loss_fn(y_hat, y)
+
+        # Add all remaining features.
+        for i in range(min_coalition, max_coalition):
+            # Add next feature.
+            inds = permutations[:, i]
+            S[arange, inds] = 1
+
+            # Make prediction with missing features.
+            y_hat = self.imputer(x, S)
+            loss = self.loss_fn(y_hat, y)
+
+            # Calculate delta sample.
+            scores[arange, inds] = prev_loss - loss
+            prev_loss = loss
+
+        return scores, sample_counts

@@ -27,7 +27,7 @@ def estimate_total(imputer, X, Y, batch_size, loss_fn):
     return marginal_loss - mean_loss
 
 
-def estimate_holdout_importance(imputer, X, Y, batch_size, loss_fn, batches):
+def estimate_holdout_importance(imputer, X, Y, batch_size, loss_fn, batches, rng):
     '''Estimate the impact of holding out features individually.'''
     N, _ = X.shape
     num_features = imputer.num_groups
@@ -38,7 +38,7 @@ def estimate_holdout_importance(imputer, X, Y, batch_size, loss_fn, batches):
     # Sample the same batches for all features.
     for it in range(batches):
         # Sample minibatch.
-        mb = np.random.choice(N, batch_size)
+        mb = rng.choice(N, batch_size)
         x = X[mb]
         y = Y[mb]
 
@@ -66,9 +66,12 @@ class IteratedEstimator:
     '''
     def __init__(self,
                  imputer,
-                 loss='cross entropy'):
+                 loss='cross entropy',
+                 random_state=None
+                 ):
         self.imputer = imputer
         self.loss_fn = utils.get_loss(loss, reduction='none')
+        self.rng = np.random.default_rng(seed=random_state)
 
     def __call__(self,
                  X,
@@ -139,7 +142,8 @@ class IteratedEstimator:
             if verbose:
                 print('Determining feature ordering...')
             holdout_importance = estimate_holdout_importance(
-                self.imputer, X, Y, batch_size, self.loss_fn, ordering_batches)
+                self.imputer, X, Y, batch_size, self.loss_fn, ordering_batches, self.rng
+            )
             if verbose:
                 print('Done')
             # Use np.abs in case there are large negative contributors.
