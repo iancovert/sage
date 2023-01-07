@@ -11,17 +11,19 @@ class PermutationEstimator:
     Args:
       imputer: model that accommodates held out features.
       loss: loss function ('mse', 'cross entropy').
+      random_state: random seed, enables reproducibility.
     '''
     def __init__(self,
                  imputer,
                  loss='cross entropy',
                  n_jobs=1,
-                 random_state=None
-                 ):
+                 random_state=None):
         self.imputer = imputer
         self.loss_fn = utils.get_loss(loss, reduction='none')
+        self.random_state = random_state
         self.n_jobs = joblib.effective_n_jobs(n_jobs)
-        self.rng = np.random.default_rng(seed=random_state)
+        if n_jobs != 1:
+            print(f'PermutationEstimator will use {self.n_jobs} jobs')
 
     def __call__(self,
                  X,
@@ -57,6 +59,9 @@ class PermutationEstimator:
 
         Returns: Explanation object.
         '''
+        # Set random state.
+        self.rng = np.random.default_rng(seed=self.random_state)
+
         # Determine explanation type.
         if Y is not None:
             explanation_type = 'SAGE'
@@ -77,8 +82,8 @@ class PermutationEstimator:
         assert min_coalition >= 0
         assert max_coalition <= num_features
         assert min_coalition < max_coalition
-
-        explanation_type = 'Relaxed ' + explanation_type
+        if min_coalition > 0 or max_coalition < num_features:
+            explanation_type = 'Relaxed ' + explanation_type
 
         # Possibly force convergence detection.
         if n_permutations is None:
@@ -92,34 +97,28 @@ class PermutationEstimator:
             assert 0 < thresh < 1
 
         # Set up bar.
-        n_loops = int(n_permutations / batch_size)
+        n_loops = int(np.ceil(n_permutations / (batch_size * self.n_jobs)))
         if bar:
             if detect_convergence:
                 bar = tqdm(total=1)
             else:
-                bar = tqdm(total=n_loops * batch_size * num_features)
+                bar = tqdm(total=n_loops * self.n_jobs * batch_size)
 
         # Setup.
         tracker = utils.ImportanceTracker()
 
-        # Performed iterations counter.
-        it = 0
-
-        while it < n_loops:
-            # Make sure we don't perform more iterations than n_loops.
-            num_batches = min(self.n_jobs, n_loops - it)
-
+        for it in range(n_loops):
+            # Sample data.
             batches = []
-            for _ in range(num_batches):
+            for _ in range(self.n_jobs):
                 idxs = self.rng.choice(N, batch_size)
                 batches.append((X[idxs], Y[idxs]))
 
+            # Get results from parallel processing of batches.
             results = joblib.Parallel(n_jobs=self.n_jobs)(
-                joblib.delayed(self._process_sample)(x, y, batch_size, num_features, min_coalition, max_coalition)
+                joblib.delayed(self._process_sample)(x, y, num_features, min_coalition, max_coalition)
                 for x, y in batches
             )
-
-            it += self.n_jobs
 
             for scores, sample_counts in results:
                 tracker.update(scores, sample_counts)
@@ -149,18 +148,24 @@ class PermutationEstimator:
                         bar.refresh()
                     break
 
-            # Update convergence estimation.
+            # Update progress bar.
             if bar and detect_convergence:
+                # Update using convergence estimation.
                 N_est = (it + 1) * (ratio / thresh) ** 2
                 bar.n = np.around((it + 1) / N_est, 4)
                 bar.refresh()
+            if bar and not detect_convergence:
+                # Simply update number of permutations.
+                bar.update(self.n_jobs)
 
         if bar:
             bar.close()
 
         return core.Explanation(tracker.values, tracker.std, explanation_type)
 
-    def _process_sample(self, x, y, batch_size, num_features, min_coalition, max_coalition):
+    def _process_sample(self, x, y, num_features, min_coalition, max_coalition):
+        # Setup.
+        batch_size = len(x)
         arange = np.arange(batch_size)
         scores = np.zeros((batch_size, num_features))
         S = np.zeros((batch_size, num_features), dtype=bool)
@@ -171,9 +176,12 @@ class PermutationEstimator:
             self.rng.shuffle(permutations[i])
 
         # Calculate sample counts.
-        sample_counts = np.zeros(num_features, dtype=int)
-        for i in range(batch_size):
-            sample_counts[permutations[i, min_coalition:max_coalition]] += 1
+        if min_coalition > 0 or max_coalition < num_features:
+            sample_counts = np.zeros(num_features, dtype=int)
+            for i in range(batch_size):
+                sample_counts[permutations[i, min_coalition:max_coalition]] += 1
+        else:
+            sample_counts = None
 
         # Add necessary features to minimum coalition.
         for i in range(min_coalition):
