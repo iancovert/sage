@@ -81,15 +81,15 @@ class KernelEstimator:
     Args:
       imputer: model that accommodates held out features.
       loss: loss function ('mse', 'cross entropy').
+      random_state: random seed, enables reproducibility.
     '''
     def __init__(self,
                  imputer,
                  loss='cross entropy',
-                 random_state=None
-                 ):
+                 random_state=None):
         self.imputer = imputer
         self.loss_fn = utils.get_loss(loss, reduction='none')
-        self.rng = np.random.default_rng(seed=random_state)
+        self.random_state = random_state
 
     def __call__(self,
                  X,
@@ -123,6 +123,9 @@ class KernelEstimator:
 
         Returns: Explanation object.
         '''
+        # Set random state.
+        self.rng = np.random.default_rng(seed=self.random_state)
+
         # Determine explanation type.
         if Y is not None:
             explanation_type = 'SAGE'

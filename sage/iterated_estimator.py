@@ -63,15 +63,15 @@ class IteratedEstimator:
     Args:
       imputer: model that accommodates held out features.
       loss: loss function ('mse', 'cross entropy').
+      random_state: random seed, enables reproducibility.
     '''
     def __init__(self,
                  imputer,
                  loss='cross entropy',
-                 random_state=None
-                 ):
+                 random_state=None):
         self.imputer = imputer
         self.loss_fn = utils.get_loss(loss, reduction='none')
-        self.rng = np.random.default_rng(seed=random_state)
+        self.random_state = random_state
 
     def __call__(self,
                  X,
@@ -109,6 +109,9 @@ class IteratedEstimator:
 
         Returns: Explanation object.
         '''
+        # Set random state.
+        self.rng = np.random.default_rng(seed=self.random_state)
+
         # Determine explanation type.
         if Y is not None:
             explanation_type = 'SAGE'
@@ -142,8 +145,8 @@ class IteratedEstimator:
             if verbose:
                 print('Determining feature ordering...')
             holdout_importance = estimate_holdout_importance(
-                self.imputer, X, Y, batch_size, self.loss_fn, ordering_batches, self.rng
-            )
+                self.imputer, X, Y, batch_size, self.loss_fn, ordering_batches,
+                self.rng)
             if verbose:
                 print('Done')
             # Use np.abs in case there are large negative contributors.
