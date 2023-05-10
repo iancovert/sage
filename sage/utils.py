@@ -3,41 +3,50 @@ import numpy as np
 
 
 def model_conversion(model):
-    '''Convert model to callable.'''
-    if safe_isinstance(model, 'sklearn.base.ClassifierMixin'):
+    """Convert model to callable."""
+    if safe_isinstance(model, "sklearn.base.ClassifierMixin"):
         return lambda x: model.predict_proba(x)
 
-    elif safe_isinstance(model, 'sklearn.base.RegressorMixin'):
+    elif safe_isinstance(model, "sklearn.base.RegressorMixin"):
         return lambda x: model.predict(x)
 
-    elif safe_isinstance(model, 'catboost.CatBoostClassifier'):
+    elif safe_isinstance(model, "catboost.CatBoostClassifier"):
         return lambda x: model.predict_proba(x)
 
-    elif safe_isinstance(model, 'catboost.CatBoostRegressor'):
+    elif safe_isinstance(model, "catboost.CatBoostRegressor"):
         return lambda x: model.predict(x)
 
-    elif safe_isinstance(model, 'lightgbm.basic.Booster'):
+    elif safe_isinstance(model, "lightgbm.basic.Booster"):
         return lambda x: model.predict(x)
 
-    elif safe_isinstance(model, 'xgboost.core.Booster'):
+    elif safe_isinstance(model, "xgboost.core.Booster"):
         import xgboost
+
         return lambda x: model.predict(xgboost.DMatrix(x))
 
-    elif safe_isinstance(model, 'torch.nn.Module'):
-        print('Setting up imputer for PyTorch model, assuming that any '
-              'necessary output activations are applied properly. If '
-              'not, please set up nn.Sequential with nn.Sigmoid or nn.Softmax')
+    elif safe_isinstance(model, "torch.nn.Module"):
+        print(
+            "Setting up imputer for PyTorch model, assuming that any "
+            "necessary output activations are applied properly. If "
+            "not, please set up nn.Sequential with nn.Sigmoid or nn.Softmax"
+        )
 
         import torch
+
         model.eval()
         device = next(model.parameters()).device
-        return lambda x: model(torch.tensor(
-            x, dtype=torch.float32, device=device)).cpu().data.numpy()
+        return (
+            lambda x: model(torch.tensor(x, dtype=torch.float32, device=device))
+            .cpu()
+            .data.numpy()
+        )
 
-    elif safe_isinstance(model, 'keras.Model'):
-        print('Setting up imputer for keras model, assuming that any '
-              'necessary output activations are applied properly. If not, '
-              'please set up keras.Sequential with keras.layers.Softmax()')
+    elif safe_isinstance(model, "keras.Model"):
+        print(
+            "Setting up imputer for keras model, assuming that any "
+            "necessary output activations are applied properly. If not, "
+            "please set up keras.Sequential with keras.layers.Softmax()"
+        )
 
         return lambda x: model(x, training=False).numpy()
 
@@ -46,36 +55,38 @@ def model_conversion(model):
         return model
 
     else:
-        raise ValueError('model cannot be converted automatically, '
-                         'please convert to a lambda function')
+        raise ValueError(
+            "model cannot be converted automatically, "
+            "please convert to a lambda function"
+        )
 
 
 def dataset_output(imputer, X, batch_size):
-    '''Get model output for entire dataset.'''
+    """Get model output for entire dataset."""
     Y = []
     for i in range(int(np.ceil(len(X) / batch_size))):
-        x = X[i*batch_size:(i+1)*batch_size]
+        x = X[i * batch_size : (i + 1) * batch_size]
         pred = imputer(x, np.ones((len(x), imputer.num_groups), dtype=bool))
         Y.append(pred)
     return np.concatenate(Y)
 
 
 def verify_model_data(imputer, X, Y, loss, batch_size):
-    '''Ensure that model and data are set up properly.'''
+    """Ensure that model and data are set up properly."""
     check_labels = True
     if Y is None:
-        print('Calculating model sensitivity (Shapley Effects, not SAGE)')
+        print("Calculating model sensitivity (Shapley Effects, not SAGE)")
         check_labels = False
         Y = dataset_output(imputer, X, batch_size)
 
         # Fix output shape for classification tasks.
-        if isinstance(loss, CrossEntropyLoss):
+        if isinstance(loss, (CrossEntropyLoss, ZeroOneLoss)):
             if Y.shape == (len(X),):
                 Y = Y[:, np.newaxis]
             if Y.shape[1] == 1:
                 Y = np.concatenate([1 - Y, Y], axis=1)
 
-    if isinstance(loss, CrossEntropyLoss):
+    if isinstance(loss, (CrossEntropyLoss, ZeroOneLoss)):
         x = X[:batch_size]
         probs = imputer(x, np.ones((len(x), imputer.num_groups), dtype=bool))
 
@@ -88,8 +99,10 @@ def verify_model_data(imputer, X, Y, loss, batch_size):
             elif Y.shape == (len(X), 1):
                 Y = Y[:, 0]
             else:
-                raise ValueError('labels shape should be (batch,) or (batch, 1)'
-                                 ' for cross entropy loss')
+                raise ValueError(
+                    "labels shape should be (batch,) or (batch, 1)"
+                    " for cross entropy / zero-one loss"
+                )
 
         if (probs.ndim == 1) or (probs.shape[1] == 1):
             # Check label encoding.
@@ -103,8 +116,9 @@ def verify_model_data(imputer, X, Y, loss, batch_size):
                     Y = Y.copy()
                     Y[Y == -1] = 0
                 else:
-                    raise ValueError('labels for binary classification must be '
-                                     '[0, 1] or [-1, 1]')
+                    raise ValueError(
+                        "labels for binary classification must be " "[0, 1] or [-1, 1]"
+                    )
 
             # Check for valid probability outputs.
             valid_probs = np.all(np.logical_and(probs >= 0, probs <= 1))
@@ -113,26 +127,29 @@ def verify_model_data(imputer, X, Y, loss, batch_size):
             # Multiclass output, check for valid probability outputs.
             valid_probs = np.all(np.logical_and(probs >= 0, probs <= 1))
             ones = np.sum(probs, axis=1)
-            valid_probs = valid_probs and np.allclose(ones, np.ones(ones.shape))
+            valid_probs = valid_probs and np.allclose(
+                ones, np.ones(ones.shape), atol=0.001
+            )
 
         else:
-            raise ValueError('prediction has too many dimensions')
+            raise ValueError("prediction has too many dimensions")
 
         if not valid_probs:
-            raise ValueError('predictions are not valid probabilities')
+            raise ValueError("predictions are not valid probabilities")
 
     return X, Y
 
 
 class ImportanceTracker:
-    '''For tracking feature importance using a dynamic average.'''
+    """For tracking feature importance using a dynamic average."""
+
     def __init__(self):
         self.mean = 0
         self.sum_squares = 0
         self.N = 0
 
     def update(self, scores, num_samples=None):
-        '''
+        """
         Update mean and sum of squares using Welford's algorithm.
 
         Args:
@@ -140,7 +157,7 @@ class ImportanceTracker:
           num_samples: array of size (dim,) representing the number of samples
             for each dimension. For sparse updates, with void samples
             represented by zeros.
-        '''
+        """
         if num_samples is None:
             # Welford's algorithm.
             self.N += len(scores)
@@ -155,13 +172,13 @@ class ImportanceTracker:
             num_void = len(scores) - num_samples
             orig_mean = np.copy(self.mean)
             diff = scores - self.mean
-            self.mean += (
-                np.sum(diff, axis=0) +
-                self.mean * num_void) / np.maximum(self.N, 1)
+            self.mean += (np.sum(diff, axis=0) + self.mean * num_void) / np.maximum(
+                self.N, 1
+            )
             diff2 = scores - self.mean
             self.sum_squares += (
-                np.sum(diff * diff2, axis=0) -
-                orig_mean * self.mean * num_void)
+                np.sum(diff * diff2, axis=0) - orig_mean * self.mean * num_void
+            )
 
     @property
     def values(self):
@@ -174,13 +191,14 @@ class ImportanceTracker:
 
     @property
     def std(self):
-        return self.var ** 0.5
+        return self.var**0.5
 
 
 class MSELoss:
-    '''MSE loss that sums over non-batch dimensions.'''
-    def __init__(self, reduction='mean'):
-        assert reduction in ('none', 'mean')
+    """MSE loss that sums over non-batch dimensions."""
+
+    def __init__(self, reduction="mean"):
+        assert reduction in ("none", "mean")
         self.reduction = reduction
 
     def __call__(self, pred, target):
@@ -190,20 +208,50 @@ class MSELoss:
         elif pred.shape[-1] == 1 and len(pred.shape) - len(target.shape) == 1:
             target = np.expand_dims(target, -1)
         elif not target.shape == pred.shape:
-            raise ValueError('shape mismatch, pred has shape {} and target '
-                             'has shape {}'.format(pred.shape, target.shape))
-        loss = np.sum(
-            np.reshape((pred - target) ** 2, (len(pred), -1)), axis=1)
-        if self.reduction == 'mean':
+            raise ValueError(
+                "shape mismatch, pred has shape {} and target "
+                "has shape {}".format(pred.shape, target.shape)
+            )
+        loss = np.sum(np.reshape((pred - target) ** 2, (len(pred), -1)), axis=1)
+        if self.reduction == "mean":
             return np.mean(loss)
+        return loss
+
+
+class ZeroOneLoss:
+    """zero-one loss that expects probabilities."""
+
+    def __init__(self, reduction="mean"):
+        assert reduction in ("none", "mean")
+        self.reduction = reduction
+
+    def __call__(self, pred, target):
+
+        # Add a dimension to prediction probabilities if necessary.
+        if pred.ndim == 1:
+            pred = pred[:, np.newaxis]
+        if pred.shape[1] == 1:
+            pred = np.append(1 - pred, pred, axis=1)
+
+        if target.ndim == 1:
+            # Class labels.
+            loss = (np.argmax(pred, axis=1) != target).astype(float)
+        elif target.ndim == 2:
+            # Probabilistic labels.
+            loss = (np.argmax(pred, axis=1) != np.argmax(target, axis=1)).astype(float)
         else:
-            return loss
+            raise ValueError("incorrect labels shape for zero-one loss")
+
+        if self.reduction == "mean":
+            return np.mean(loss)
+        return loss
 
 
 class CrossEntropyLoss:
-    '''Cross entropy loss that expects probabilities.'''
-    def __init__(self, reduction='mean'):
-        assert reduction in ('none', 'mean')
+    """Cross entropy loss that expects probabilities."""
+
+    def __init__(self, reduction="mean"):
+        assert reduction in ("none", "mean")
         self.reduction = reduction
 
     def __call__(self, pred, target, eps=1e-12):
@@ -219,52 +267,54 @@ class CrossEntropyLoss:
         # Calculate loss.
         if target.ndim == 1:
             # Class labels.
-            loss = - np.log(pred[np.arange(len(pred)), target])
+            loss = -np.log(pred[np.arange(len(pred)), target])
         elif target.ndim == 2:
             # Probabilistic labels.
-            loss = - np.sum(target * np.log(pred), axis=1)
+            loss = -np.sum(target * np.log(pred), axis=1)
         else:
-            raise ValueError('incorrect labels shape for cross entropy loss')
+            raise ValueError("incorrect labels shape for cross entropy loss")
 
-        if self.reduction == 'mean':
+        if self.reduction == "mean":
             return np.mean(loss)
-        else:
-            return loss
+        return loss
 
 
-def get_loss(loss, reduction='mean'):
-    '''Get loss function by name.'''
-    if loss == 'cross entropy':
+def get_loss(loss, reduction="mean"):
+    """Get loss function by name."""
+    if loss == "cross entropy":
         loss_fn = CrossEntropyLoss(reduction=reduction)
-    elif loss == 'mse':
+    elif loss == "zero one":
+        loss_fn = ZeroOneLoss(reduction=reduction)
+    elif loss == "mse":
         loss_fn = MSELoss(reduction=reduction)
     else:
-        raise ValueError('unsupported loss: {}'.format(loss))
+        raise ValueError("unsupported loss: {}".format(loss))
     return loss_fn
 
 
 def sample_subset_feature(input_size, n, ind):
-    '''
+    """
     Sample a subset of features where a given feature index must not be
     included. This helper function is used for estimating Shapley values, so
     the subset is sampled by 1) sampling the number of features to be included
     from a uniform distribution, and 2) sampling the features to be included.
-    '''
+    """
     S = np.zeros((n, input_size), dtype=bool)
     choices = list(range(input_size))
     del choices[ind]
     for row in S:
         inds = np.random.choice(
-            choices, size=np.random.choice(input_size), replace=False)
+            choices, size=np.random.choice(input_size), replace=False
+        )
         row[inds] = 1
     return S
 
 
 def safe_isinstance(obj, class_str):
-    '''Check isinstance without requiring imports.'''
+    """Check isinstance without requiring imports."""
     if not isinstance(class_str, str):
         return False
-    module_name, class_name = class_str.rsplit('.', 1)
+    module_name, class_name = class_str.rsplit(".", 1)
     if module_name not in sys.modules:
         return False
     module = sys.modules[module_name]
