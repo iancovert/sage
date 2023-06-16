@@ -45,9 +45,8 @@ def plot(explanation,
     if feature_names is None:
         feature_names = ['Feature {}'.format(i) for i in
                          range(len(explanation.values))]
-    else:
-        if isinstance(feature_names, list):
-            feature_names = np.array(feature_names)
+    if isinstance(feature_names, list):
+        feature_names = np.array(feature_names)
 
     # Sort features if necessary.
     if len(feature_names) > max_features:
@@ -68,7 +67,7 @@ def plot(explanation,
                          + ['Remaining Features'])
         values = (list(values[:max_features])
                   + [np.sum(values[max_features:])])
-        std = np.array(list(std[:max_features])
+        std = (list(std[:max_features])
                + [np.sum(std[max_features:] ** 2) ** 0.5])
 
     # Warn if too many features.
@@ -82,7 +81,7 @@ def plot(explanation,
         std = None
     else:
         assert 0 < confidence_level < 1
-        std = std * norm.ppf(0.5 + confidence_level / 2)
+        std = np.array(std) * norm.ppf(0.5 + confidence_level / 2)
 
     # Make plot.
     fig = plt.figure(figsize=figsize)
@@ -191,9 +190,8 @@ def comparison_plot(comparison_explanations,
     if feature_names is None:
         feature_names = ['Feature {}'.format(i) for i in
                          range(len(comparison_explanations[0].values))]
-    else:
-        if isinstance(feature_names, list):
-            feature_names = np.array(feature_names)
+    if isinstance(feature_names, list):
+        feature_names = np.array(feature_names)
 
     # Default comparison names.
     num_comps = len(comparison_explanations)
@@ -254,7 +252,7 @@ def comparison_plot(comparison_explanations,
         std = [None for _ in std]
     else:
         assert 0 < confidence_level < 1
-        std = [stddev * norm.ppf(0.5 + confidence_level / 2) for stddev in std]
+        std = [np.array(stddev) * norm.ppf(0.5 + confidence_level / 2) for stddev in std]
 
     # Make plot.
     width = 0.8 / num_comps
@@ -360,15 +358,14 @@ def plot_sign(explanation,
     if feature_names is None:
         feature_names = ['Feature {}'.format(i) for i in
                          range(len(explanation.values))]
-    else:
-        if isinstance(feature_names, list):
-            feature_names = np.array(feature_names)
+    if isinstance(feature_names, list):
+        feature_names = np.array(feature_names)
 
     # Find confidence interval width.
     values = explanation.values
     std = explanation.std
     assert 0 < confidence_level < 1
-    std = std * norm.ppf(0.5 + confidence_level / 2)
+    std = np.array(std) * norm.ppf(0.5 + confidence_level / 2)
 
     # Set colors.
     colors = []
