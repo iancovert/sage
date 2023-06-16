@@ -68,7 +68,7 @@ def plot(explanation,
                          + ['Remaining Features'])
         values = (list(values[:max_features])
                   + [np.sum(values[max_features:])])
-        std = (list(std[:max_features])
+        std = np.array(list(std[:max_features])
                + [np.sum(std[max_features:] ** 2) ** 0.5])
 
     # Warn if too many features.
