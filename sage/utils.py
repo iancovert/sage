@@ -201,6 +201,33 @@ class MSELoss:
         else:
             return loss
 
+class ZeroOneLoss:
+    '''zero-one loss.'''
+
+    def __init__(self, reduction='mean'):
+        assert reduction in ('none', 'mean')
+        self.reduction = reduction
+
+    def __call__(self, pred, target):
+
+        # Add a dimension to prediction probabilities if necessary.
+        if pred.ndim == 1:
+            pred = pred[:, np.newaxis]
+        if pred.shape[1] == 1:
+            pred = np.append(1 - pred, pred, axis=1)
+
+        if target.ndim == 1:
+            # Class labels.
+            loss = (np.argmax(pred, axis=1) != target).astype(float)
+        elif target.ndim == 2:
+            # Probabilistic labels.
+            loss = (np.argmax(pred, axis=1) != np.argmax(target, axis=1)).astype(float)
+        else:
+            raise ValueError('incorrect labels shape for zero-one loss')
+
+        if self.reduction == 'mean':
+            return np.mean(loss)
+        return loss
 
 class CrossEntropyLoss:
     '''Cross entropy loss that expects probabilities.'''
