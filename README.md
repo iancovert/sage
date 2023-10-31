@@ -68,6 +68,7 @@ Check out the following notebooks to get started:
 - [MNIST](https://github.com/iancovert/sage/blob/master/notebooks/mnist.ipynb): shows strategies to accelerate convergence for datasets with many features (feature grouping, different imputing setups)
 - [Consistency](https://github.com/iancovert/sage/blob/master/notebooks/consistency.ipynb): verifies that our various Shapley value estimators return the same results (see the estimators listed below)
 - [Calibration](https://github.com/iancovert/sage/blob/master/notebooks/calibration.ipynb): verifies that SAGE's confidence intervals are representative of the uncertainty across runs
+- [Losses](https://github.com/iancovert/sage/blob/master/notebooks/losses.ipynb): shows how SAGE can be used in classification with alternative loss functions.
 
 If you want to replicate the experiments described in our paper, see this separate [repository](https://github.com/iancovert/sage-experiments).
 
