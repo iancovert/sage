@@ -202,7 +202,7 @@ class MSELoss:
             return loss
 
 class ZeroOneLoss:
-    '''zero-one loss.'''
+    '''zero-one loss that expects probabilities.'''
 
     def __init__(self, reduction='mean'):
         assert reduction in ('none', 'mean')
