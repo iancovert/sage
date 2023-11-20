@@ -9,3 +9,6 @@ sage_importance.egg-info
 *catboost_info
 /*.ipynb
 data/MNIST
+
+venv/
+env/
