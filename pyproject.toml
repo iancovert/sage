@@ -28,13 +28,19 @@ dependencies = [
 
 [project.optional-dependencies]
 
+dev=[
+    "pre-commit"
+]
+
 notebook=[
     "catboost",
-    "gender-guesser", 
-    "pandas", 
-    "removal-explanations @ git+https://github.com/iancovert/removal-explanations.git", 
+    "ipykernel",
+    "gender-guesser",
+    "pandas",
+    "removal-explanations @ git+https://github.com/iancovert/removal-explanations.git",
+    "tensorflow",
     "torch",
-    "torchvision", 
+    "torchvision",
     "scikit-learn",
     "xgboost",
 ]
@@ -46,5 +52,5 @@ Repository = "https://github.com/iancovert/sage/"
 requires = ["setuptools", "packaging"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.packages.find]
-where = ["sage"]
+[tool.setuptools]
+packages = ["sage"]
