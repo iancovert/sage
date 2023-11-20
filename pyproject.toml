@@ -29,7 +29,8 @@ dependencies = [
 [project.optional-dependencies]
 
 dev=[
-    "pre-commit"
+    "build",
+    "pre-commit",
 ]
 
 notebook=[
@@ -49,7 +50,7 @@ notebook=[
 Repository = "https://github.com/iancovert/sage/"
 
 [build-system]
-requires = ["setuptools", "packaging"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
