@@ -64,7 +64,7 @@ class SignEstimator:
 
     Args:
       imputer: model that accommodates held out features.
-      loss: loss function ('mse', 'cross entropy').
+      loss: loss function ('mse', 'cross entropy', 'zero one').
       random_state: random seed, enables reproducibility.
     '''
 
