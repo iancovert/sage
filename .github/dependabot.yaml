@@ -5,12 +5,6 @@
 
 version: 2
 updates:
-  # Maintain dependencies for pip
-  - package-ecosystem: "pip"
-    directory: "/" # Location of package manifests
-    schedule:
-      interval: "daily"
-
    # Maintain dependencies for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
