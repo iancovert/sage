@@ -1,0 +1,57 @@
+
+[project]
+name = "sage-importance"
+version = "0.0.5"
+description = "For calculating global feature importance using Shapley values."
+readme = "README.md"
+license = {text = "MIT License"}
+authors = [
+    {name = "Ian Covert", email = "icovert@cs.washington.edu"},
+]
+
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+
+requires-python = ">=3.8"
+dependencies = [
+    "joblib",
+    "matplotlib",
+    "numpy",
+    "scipy",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+
+dev=[
+    "build",
+    "pre-commit",
+]
+
+notebook=[
+    "catboost",
+    "ipykernel",
+    "gender-guesser",
+    "pandas",
+    "removal-explanations @ git+https://github.com/iancovert/removal-explanations.git",
+    "tensorflow",
+    "torch",
+    "torchvision",
+    "scikit-learn",
+    "xgboost",
+]
+
+[project.urls]
+Repository = "https://github.com/iancovert/sage/"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["sage"]
