@@ -6,7 +6,7 @@ description = "For calculating global feature importance using Shapley values."
 readme = "README.md"
 license = {text = "MIT License"}
 authors = [
-    {name = "Ian Covert", email = "icovert@cs.washington.edu"},
+    {name = "Ian Covert", email = "ian.covert@gmail.com"},
 ]
 
 classifiers = [
@@ -38,7 +38,6 @@ notebook=[
     "ipykernel",
     "gender-guesser",
     "pandas",
-    "removal-explanations @ git+https://github.com/iancovert/removal-explanations.git",
     "tensorflow",
     "torch",
     "torchvision",
