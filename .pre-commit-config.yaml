@@ -11,3 +11,10 @@ repos:
       - id: debug-statements
       - id: end-of-file-fixer
       - id: mixed-line-ending
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.2.1
+    hooks:
+    - id: ruff
+      args:
+      - --fix
+    - id: ruff-format

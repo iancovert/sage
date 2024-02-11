@@ -1,9 +1,10 @@
-from sage import utils, core, imputers, grouped_imputers, plotting, datasets
+from sage import core, datasets, grouped_imputers, imputers, plotting, utils
+
 from .core import Explanation, load
-from .plotting import plot, comparison_plot
-from .imputers import DefaultImputer, MarginalImputer
 from .grouped_imputers import GroupedDefaultImputer, GroupedMarginalImputer
-from .permutation_estimator import PermutationEstimator
+from .imputers import DefaultImputer, MarginalImputer
 from .iterated_estimator import IteratedEstimator
 from .kernel_estimator import KernelEstimator
+from .permutation_estimator import PermutationEstimator
+from .plotting import comparison_plot, plot
 from .sign_estimator import SignEstimator

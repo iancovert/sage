@@ -1,32 +1,40 @@
 import numpy as np
-from sage import utils, core
 from tqdm.auto import tqdm
 
+from sage import core, utils
 
-def calculate_A(num_features):
-    '''Calculate A parameter's exact form.'''
+
+def calculate_A(num_features):  # noqa: N802
+    """Calculate A parameter's exact form."""
     p_coaccur = (
-        (np.sum((np.arange(2, num_features) - 1)
-         / (num_features - np.arange(2, num_features)))) /
-        (num_features * (num_features - 1) *
-         np.sum(1 / (np.arange(1, num_features)
-                * (num_features - np.arange(1, num_features))))))
+        np.sum(
+            (np.arange(2, num_features) - 1)
+            / (num_features - np.arange(2, num_features))
+        )
+    ) / (
+        num_features
+        * (num_features - 1)
+        * np.sum(
+            1
+            / (np.arange(1, num_features) * (num_features - np.arange(1, num_features)))
+        )
+    )
     A = np.eye(num_features) * 0.5 + (1 - np.eye(num_features)) * p_coaccur
     return A
 
 
 def estimate_constraints(imputer, X, Y, batch_size, loss_fn):
-    '''
+    """
     Estimate loss when no features are included and when all features are
     included. This is used to enforce constraints.
-    '''
+    """
     N = 0
     mean_loss = 0
     marginal_loss = 0
     num_features = imputer.num_groups
     for i in range(np.ceil(len(X) / batch_size).astype(int)):
-        x = X[i * batch_size:(i + 1) * batch_size]
-        y = Y[i * batch_size:(i + 1) * batch_size]
+        x = X[i * batch_size : (i + 1) * batch_size]
+        y = Y[i * batch_size : (i + 1) * batch_size]
         N += len(x)
 
         # All features.
@@ -39,31 +47,28 @@ def estimate_constraints(imputer, X, Y, batch_size, loss_fn):
         loss = loss_fn(pred, y)
         marginal_loss += np.sum(loss - marginal_loss) / N
 
-    return - marginal_loss, - mean_loss
+    return -marginal_loss, -mean_loss
 
 
 def calculate_result(A, b, total, b_sum_squares, n):
-    '''Calculate regression coefficients and uncertainty estimates.'''
+    """Calculate regression coefficients and uncertainty estimates."""
     num_features = A.shape[1]
     A_inv_one = np.linalg.solve(A, np.ones(num_features))
     A_inv_vec = np.linalg.solve(A, b)
-    values = (
-        A_inv_vec -
-        A_inv_one * (np.sum(A_inv_vec) - total) / np.sum(A_inv_one))
+    values = A_inv_vec - A_inv_one * (np.sum(A_inv_vec) - total) / np.sum(A_inv_one)
 
     # Calculate variance.
     try:
         b_sum_squares = 0.5 * (b_sum_squares + b_sum_squares.T)
-        b_cov = b_sum_squares / (n ** 2)
+        b_cov = b_sum_squares / (n**2)
         # TODO this fails in situations where model is invariant to features.
         cholesky = np.linalg.cholesky(b_cov)
-        L = (
-            np.linalg.solve(A, cholesky) +
-            np.matmul(np.outer(A_inv_one, A_inv_one), cholesky)
-            / np.sum(A_inv_one))
+        L = np.linalg.solve(A, cholesky) + np.matmul(
+            np.outer(A_inv_one, A_inv_one), cholesky
+        ) / np.sum(A_inv_one)
         beta_cov = np.matmul(L, L.T)
         var = np.diag(beta_cov)
-        std = var ** 0.5
+        std = var**0.5
     except np.linalg.LinAlgError:
         # b_cov likely is not PSD due to insufficient samples.
         std = np.ones(num_features) * np.nan
@@ -72,7 +77,7 @@ def calculate_result(A, b, total, b_sum_squares, n):
 
 
 class KernelEstimator:
-    '''
+    """
     Estimate SAGE values by fitting weighted linear model.
 
     This is an unbiased estimator designed for stochastic cooperative games,
@@ -82,27 +87,26 @@ class KernelEstimator:
       imputer: model that accommodates held out features.
       loss: loss function ('mse', 'cross entropy', 'zero one').
       random_state: random seed, enables reproducibility.
-    '''
+    """
 
-    def __init__(self,
-                 imputer,
-                 loss='cross entropy',
-                 random_state=None):
+    def __init__(self, imputer, loss="cross entropy", random_state=None):
         self.imputer = imputer
-        self.loss_fn = utils.get_loss(loss, reduction='none')
+        self.loss_fn = utils.get_loss(loss, reduction="none")
         self.random_state = random_state
 
-    def __call__(self,
-                 X,
-                 Y=None,
-                 batch_size=512,
-                 detect_convergence=True,
-                 thresh=0.025,
-                 n_samples=None,
-                 verbose=False,
-                 bar=True,
-                 check_every=5):
-        '''
+    def __call__(
+        self,
+        X,
+        Y=None,
+        batch_size=512,
+        detect_convergence=True,
+        thresh=0.025,
+        n_samples=None,
+        verbose=False,
+        bar=True,
+        check_every=5,
+    ):
+        """
         Estimate SAGE values by fitting linear regression model.
 
         Args:
@@ -123,21 +127,20 @@ class KernelEstimator:
         smallest values.
 
         Returns: Explanation object.
-        '''
+        """
         # Set random state.
         self.rng = np.random.default_rng(seed=self.random_state)
 
         # Determine explanation type.
         if Y is not None:
-            explanation_type = 'SAGE'
+            explanation_type = "SAGE"
         else:
-            explanation_type = 'Shapley Effects'
+            explanation_type = "Shapley Effects"
 
         # Verify model.
         N, _ = X.shape
         num_features = self.imputer.num_groups
-        X, Y = utils.verify_model_data(
-            self.imputer, X, Y, self.loss_fn, batch_size)
+        X, Y = utils.verify_model_data(self.imputer, X, Y, self.loss_fn, batch_size)
 
         # Possibly force convergence detection.
         if n_samples is None:
@@ -145,7 +148,7 @@ class KernelEstimator:
             if not detect_convergence:
                 detect_convergence = True
                 if verbose:
-                    print('Turning convergence detection on')
+                    print("Turning convergence detection on")
 
         if detect_convergence:
             assert 0 < thresh < 1
@@ -156,8 +159,7 @@ class KernelEstimator:
         weights = weights / np.sum(weights)
 
         # Estimate null and grand coalition values.
-        null, grand = estimate_constraints(
-            self.imputer, X, Y, batch_size, self.loss_fn)
+        null, grand = estimate_constraints(self.imputer, X, Y, batch_size, self.loss_fn)
         total = grand - null
 
         # Set up bar.
@@ -183,21 +185,22 @@ class KernelEstimator:
 
             # Sample subsets.
             S = np.zeros((batch_size, num_features), dtype=bool)
-            num_included = self.rng.choice(num_features - 1, size=batch_size,
-                                            p=weights) + 1
+            num_included = (
+                self.rng.choice(num_features - 1, size=batch_size, p=weights) + 1
+            )
             for row, num in zip(S, num_included):
                 inds = self.rng.choice(num_features, size=num, replace=False)
                 row[inds] = 1
 
             # Calculate loss.
             y_hat = self.imputer(x, S)
-            loss = - self.loss_fn(y_hat, y) - null
+            loss = -self.loss_fn(y_hat, y) - null
             b_orig = S.astype(float) * loss[:, np.newaxis]
 
             # Calculate loss with inverted subset (for variance reduction).
             S = np.logical_not(S)
             y_hat = self.imputer(x, S)
-            loss = - self.loss_fn(y_hat, y) - null
+            loss = -self.loss_fn(y_hat, y) - null
             b_inv = S.astype(float) * loss[:, np.newaxis]
 
             # Welford's algorithm.
@@ -207,8 +210,8 @@ class KernelEstimator:
             b += np.sum(b_diff, axis=0) / n
             b_diff2 = b_sample - b
             b_sum_squares += np.sum(
-                np.matmul(np.expand_dims(b_diff, 2),
-                          np.expand_dims(b_diff2, 1)), axis=0)
+                np.matmul(np.expand_dims(b_diff, 2), np.expand_dims(b_diff2, 1)), axis=0
+            )
 
             # Update bar (if not detecting convergence).
             if bar and (not detect_convergence):
@@ -223,16 +226,17 @@ class KernelEstimator:
                 # Print progress message.
                 if verbose:
                     if detect_convergence:
-                        print(f'StdDev Ratio = {ratio:.4f} '
-                              f'(Converge at {thresh:.4f})')
+                        print(
+                            f"StdDev Ratio = {ratio:.4f} " f"(Converge at {thresh:.4f})"
+                        )
                     else:
-                        print(f'StdDev Ratio = {ratio:.4f}')
+                        print(f"StdDev Ratio = {ratio:.4f}")
 
                 # Check for convergence.
                 if detect_convergence:
                     if ratio < thresh:
                         if verbose:
-                            print('Detected convergence')
+                            print("Detected convergence")
 
                         # Skip bar ahead.
                         if bar:

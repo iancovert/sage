@@ -1,18 +1,19 @@
 import numpy as np
-from sage import utils, core
-from tqdm.auto import tqdm
 from scipy.stats import norm
+from tqdm.auto import tqdm
+
+from sage import core, utils
 
 
 def estimate_total(imputer, X, Y, batch_size, loss_fn):
-    '''Estimate sum of SAGE values.'''
+    """Estimate sum of SAGE values."""
     N = 0
     mean_loss = 0
     marginal_loss = 0
     num_features = imputer.num_groups
     for i in range(np.ceil(len(X) / batch_size).astype(int)):
-        x = X[i * batch_size:(i + 1) * batch_size]
-        y = Y[i * batch_size:(i + 1) * batch_size]
+        x = X[i * batch_size : (i + 1) * batch_size]
+        y = Y[i * batch_size : (i + 1) * batch_size]
         N += len(x)
 
         # All features.
@@ -29,7 +30,7 @@ def estimate_total(imputer, X, Y, batch_size, loss_fn):
 
 
 def estimate_holdout_importance(imputer, X, Y, batch_size, loss_fn, batches, rng):
-    '''Estimate the impact of holding out features individually.'''
+    """Estimate the impact of holding out features individually."""
     N, _ = X.shape
     num_features = imputer.num_groups
     all_loss = 0
@@ -49,16 +50,16 @@ def estimate_holdout_importance(imputer, X, Y, batch_size, loss_fn, batches, rng
         # Loss with features held out.
         for i in range(num_features):
             S[:, i] = 0
-            holdout_importance[i] += (
-                np.sum(loss_fn(imputer(x, S), y) - holdout_importance[i])
-                / (it + 1))
+            holdout_importance[i] += np.sum(
+                loss_fn(imputer(x, S), y) - holdout_importance[i]
+            ) / (it + 1)
             S[:, i] = 1
 
     return holdout_importance - all_loss
 
 
 class SignEstimator:
-    '''
+    """
     Estimate SAGE values to a lower precision, focusing on the sign. Based on
     the IteratedEstimator strategy of calculating values one at a time.
 
@@ -66,27 +67,26 @@ class SignEstimator:
       imputer: model that accommodates held out features.
       loss: loss function ('mse', 'cross entropy', 'zero one').
       random_state: random seed, enables reproducibility.
-    '''
+    """
 
-    def __init__(self,
-                 imputer,
-                 loss='cross entropy',
-                 random_state=None):
+    def __init__(self, imputer, loss="cross entropy", random_state=None):
         self.imputer = imputer
-        self.loss_fn = utils.get_loss(loss, reduction='none')
+        self.loss_fn = utils.get_loss(loss, reduction="none")
         self.random_state = random_state
 
-    def __call__(self,
-                 X,
-                 Y=None,
-                 batch_size=512,
-                 sign_confidence=0.99,
-                 narrow_thresh=0.025,
-                 optimize_ordering=True,
-                 ordering_batches=1,
-                 verbose=False,
-                 bar=True):
-        '''
+    def __call__(
+        self,
+        X,
+        Y=None,
+        batch_size=512,
+        sign_confidence=0.99,
+        narrow_thresh=0.025,
+        optimize_ordering=True,
+        ordering_batches=1,
+        verbose=False,
+        bar=True,
+    ):
+        """
         Estimate SAGE values.
 
         Args:
@@ -109,21 +109,20 @@ class SignEstimator:
         confidence interval is sufficiently narrow (given by narrow_thresh).
 
         Returns: Explanation object.
-        '''
+        """
         # Set random state.
         self.rng = np.random.default_rng(seed=self.random_state)
 
         # Determine explanation type.
         if Y is not None:
-            explanation_type = 'SAGE'
+            explanation_type = "SAGE"
         else:
-            explanation_type = 'Shapley Effects'
+            explanation_type = "Shapley Effects"
 
         # Verify model.
         N, _ = X.shape
         num_features = self.imputer.num_groups
-        X, Y = utils.verify_model_data(self.imputer, X, Y, self.loss_fn,
-                                       batch_size)
+        X, Y = utils.verify_model_data(self.imputer, X, Y, self.loss_fn, batch_size)
 
         # Verify thresholds.
         assert 0 < narrow_thresh < 1
@@ -138,12 +137,12 @@ class SignEstimator:
         # Feature ordering.
         if optimize_ordering:
             if verbose:
-                print('Determining feature ordering...')
+                print("Determining feature ordering...")
             holdout_importance = estimate_holdout_importance(
                 self.imputer, X, Y, batch_size, self.loss_fn, ordering_batches, self.rng
             )
             if verbose:
-                print('Done')
+                print("Done")
             # Use np.abs in case there are large negative contributors.
             ordering = list(np.argsort(np.abs(holdout_importance))[::-1])
         else:
@@ -189,35 +188,37 @@ class SignEstimator:
 
                 # Print progress message.
                 if verbose:
-                    print('Sign Ratio = {:.4f} (Converge at {:.4f}), '
-                          'Narrow Ratio = {:.4f} (Converge at {:.4f})'.format(
-                             std / np.abs(val), sign_thresh,
-                             std / gap, narrow_thresh))
+                    print(
+                        "Sign Ratio = {:.4f} (Converge at {:.4f}), "
+                        "Narrow Ratio = {:.4f} (Converge at {:.4f})".format(
+                            std / np.abs(val), sign_thresh, std / gap, narrow_thresh
+                        )
+                    )
 
                 # Check for convergence.
                 converged = converged_sign or converged_narrow
                 if converged:
                     if verbose:
-                        print('Detected feature convergence')
+                        print("Detected feature convergence")
 
                     # Skip bar ahead.
                     if bar:
-                        bar.n = np.around(bar.total * (i+1) / num_features, 4)
+                        bar.n = np.around(bar.total * (i + 1) / num_features, 4)
                         bar.refresh()
 
                 # Update convergence estimation.
                 elif bar:
-                    N_sign = (it+1) * ((std / np.abs(val)) / sign_thresh) ** 2
-                    N_narrow = (it+1) * ((std / gap) / narrow_thresh) ** 2
+                    N_sign = (it + 1) * ((std / np.abs(val)) / sign_thresh) ** 2
+                    N_narrow = (it + 1) * ((std / gap) / narrow_thresh) ** 2
                     N_est = min(N_sign, N_narrow)
-                    bar.n = np.around((i + (it+1) / N_est) / num_features, 4)
+                    bar.n = np.around((i + (it + 1) / N_est) / num_features, 4)
                     bar.refresh()
 
                 # Increment iteration variable.
                 it += 1
 
             if verbose:
-                print('Done with feature {}'.format(i))
+                print(f"Done with feature {i}")
             tracker_list.append(tracker)
 
             # Adjust min max value.
@@ -229,9 +230,7 @@ class SignEstimator:
 
         # Extract SAGE values.
         reverse_ordering = [ordering.index(ind) for ind in range(num_features)]
-        values = np.array(
-            [tracker_list[ind].values.item() for ind in reverse_ordering])
-        std = np.array(
-            [tracker_list[ind].std.item() for ind in reverse_ordering])
+        values = np.array([tracker_list[ind].values.item() for ind in reverse_ordering])
+        std = np.array([tracker_list[ind].std.item() for ind in reverse_ordering])
 
         return core.Explanation(values, std, explanation_type)

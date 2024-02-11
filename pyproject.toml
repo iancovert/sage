@@ -31,6 +31,7 @@ dependencies = [
 dev=[
     "build",
     "pre-commit",
+    "ruff"
 ]
 
 notebook=[
@@ -54,3 +55,33 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["sage"]
+
+[tool.ruff]
+
+
+include = ["*.py", "*.pyi", "**/pyproject.toml", "*.ipynb"]
+
+
+[tool.ruff.lint]
+
+# See rules: https://beta.ruff.rs/docs/rules/
+select = [
+    "I",    # isort
+    "N",    # pep8-naming
+    "NPY",  # numpy
+    "RUF",  # ruff-specific rules
+]
+
+ignore = [
+    "N803",  # argument name should be lowercase; fine for matrices
+    "N806",  # variable name should be lowercase; fine for matrices
+]
+
+preview = true
+
+[tool.ruff.format]
+preview = true
+
+[tool.ruff.lint.isort]
+known-first-party = ["sage"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
