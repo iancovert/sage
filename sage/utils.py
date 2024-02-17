@@ -14,9 +14,10 @@ def model_conversion(model):
     elif safe_isinstance(model, "catboost.CatBoostClassifier"):
         return lambda x: model.predict_proba(x)
 
-    elif safe_isinstance(model, "catboost.CatBoostRegressor") or safe_isinstance(
-        model, "lightgbm.basic.Booster"
-    ):
+    elif safe_isinstance(model, "catboost.CatBoostRegressor"):
+        return lambda x: model.predict(x)
+
+    elif safe_isinstance(model, "lightgbm.basic.Booster"):
         return lambda x: model.predict(x)
 
     elif safe_isinstance(model, "xgboost.core.Booster"):
@@ -205,10 +206,11 @@ class MSELoss:
             pred = np.expand_dims(pred, -1)
         elif pred.shape[-1] == 1 and len(pred.shape) - len(target.shape) == 1:
             target = np.expand_dims(target, -1)
-        elif target.shape != pred.shape:
+        elif not target.shape == pred.shape:
             raise ValueError(
-                f"shape mismatch, pred has shape {pred.shape} and target "
-                f"has shape {target.shape}"
+                "shape mismatch, pred has shape {} and target " "has shape {}".format(
+                    pred.shape, target.shape
+                )
             )
         loss = np.sum(np.reshape((pred - target) ** 2, (len(pred), -1)), axis=1)
         if self.reduction == "mean":
@@ -285,7 +287,7 @@ def get_loss(loss, reduction="mean"):
     elif loss == "mse":
         loss_fn = MSELoss(reduction=reduction)
     else:
-        raise ValueError(f"unsupported loss: {loss}")
+        raise ValueError("unsupported loss: {}".format(loss))
     return loss_fn
 
 
@@ -299,9 +301,12 @@ def sample_subset_feature(input_size, n, ind):
     S = np.zeros((n, input_size), dtype=bool)
     choices = list(range(input_size))
     del choices[ind]
-    rng = np.random.default_rng(seed=42)
     for row in S:
-        inds = rng.choice(choices, size=rng.choice(input_size), replace=False)
+        inds = np.random.choice(
+            choices,
+            size=np.random.choice(input_size),
+            replace=False,
+        )
         row[inds] = 1
     return S
 

@@ -4,7 +4,7 @@ from tqdm.auto import tqdm
 from sage import core, utils
 
 
-def calculate_A(num_features):  # noqa: N802
+def calculate_A(num_features):  # noqa:N802
     """Calculate A parameter's exact form."""
     p_coaccur = (
         np.sum(

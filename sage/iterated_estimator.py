@@ -164,13 +164,11 @@ class IteratedEstimator:
 
         # Iterated sampling.
         tracker_list = []
-        rng = np.random.default_rng(seed=42)
-
         for i, ind in enumerate(ordering):
             tracker = utils.ImportanceTracker()
             for it in range(n_loops):
                 # Sample data.
-                mb = rng.choice(N, batch_size)
+                mb = np.random.choice(N, batch_size)
                 x = X[mb]
                 y = Y[mb]
 
@@ -206,7 +204,7 @@ class IteratedEstimator:
                             f"StdDev Ratio = {ratio:.4f} " f"(Converge at {thresh:.4f})"
                         )
                     else:
-                        print(f"StdDev Ratio = {ratio:.4f}")
+                        print("StdDev Ratio = {:.4f}".format(ratio))
 
                 # Check for convergence.
                 if detect_convergence:
