@@ -1,22 +1,25 @@
-import numpy as np
 import warnings
+
+import numpy as np
+
 from sage import utils
 
 
 def verify_nonoverlapping(groups):
-    '''Verify that no index is present in more than one group.'''
+    """Verify that no index is present in more than one group."""
     used_inds = np.concatenate(groups)
     return np.all(np.unique(used_inds, return_counts=True)[1] == 1)
 
 
 class GroupedImputer:
-    '''GroupedImputer base class.'''
+    """GroupedImputer base class."""
+
     def __init__(self, model, groups, total, remaining_features):
         self.model = utils.model_conversion(model)
 
         # Verify that groups are non-overlapping.
         if not verify_nonoverlapping(groups):
-            raise ValueError('groups must be non-overlapping')
+            raise ValueError("groups must be non-overlapping")
 
         # Groups matrix.
         self.groups_mat = np.zeros((len(groups) + 1, total), dtype=bool)
@@ -28,8 +31,8 @@ class GroupedImputer:
         self.remaining = remaining_features
 
     def __call__(self, x, S):
-        '''Calling a GroupedImputer should evaluate the model with the
-        specified subset of features.'''
+        """Calling a GroupedImputer should evaluate the model with the
+        specified subset of features."""
         raise NotImplementedError
 
     def inclusion_matrix(self, S):
@@ -39,13 +42,14 @@ class GroupedImputer:
 
 
 class GroupedDefaultImputer(GroupedImputer):
-    '''Replace features with default values.'''
+    """Replace features with default values."""
+
     def __init__(self, model, values, groups, remaining_features=0):
         super().__init__(model, groups, values.shape[-1], remaining_features)
         if values.ndim == 1:
             values = values[np.newaxis]
         elif values[0] != 1:
-            raise ValueError('values shape must be (dim,) or (1, dim)')
+            raise ValueError("values shape must be (dim,) or (1, dim)")
         self.values = values
         self.values_repeat = values
         self.num_groups = len(groups)
@@ -67,7 +71,8 @@ class GroupedDefaultImputer(GroupedImputer):
 
 
 class GroupedMarginalImputer(GroupedImputer):
-    '''Marginalizing out removed features with their marginal distribution.'''
+    """Marginalizing out removed features with their marginal distribution."""
+
     def __init__(self, model, data, groups, remaining_features=0):
         super().__init__(model, groups, data.shape[1], remaining_features)
         self.data = data
@@ -76,9 +81,11 @@ class GroupedMarginalImputer(GroupedImputer):
         self.num_groups = len(groups)
 
         if len(data) > 1024:
-            warnings.warn('using {} background samples may lead to slow '
-                          'runtime, consider using <= 1024'.format(
-                            len(data)), RuntimeWarning)
+            warnings.warn(
+                f"using {len(data)} background samples may lead to slow "
+                "runtime, consider using <= 1024",
+                RuntimeWarning,
+            )
 
     def __call__(self, x, S):
         # Prepare x.

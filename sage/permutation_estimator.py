@@ -1,11 +1,12 @@
 import joblib
 import numpy as np
-from sage import utils, core
 from tqdm.auto import tqdm
+
+from sage import core, utils
 
 
 class PermutationEstimator:
-    '''
+    """
     Estimate SAGE values by unrolling permutations of feature indices.
 
     Args:
@@ -13,32 +14,30 @@ class PermutationEstimator:
       loss: loss function ('mse', 'cross entropy', 'zero one').
       n_jobs: number of jobs for parallel processing.
       random_state: random seed, enables reproducibility.
-    '''
+    """
 
-    def __init__(self,
-                 imputer,
-                 loss='cross entropy',
-                 n_jobs=1,
-                 random_state=None):
+    def __init__(self, imputer, loss="cross entropy", n_jobs=1, random_state=None):
         self.imputer = imputer
-        self.loss_fn = utils.get_loss(loss, reduction='none')
+        self.loss_fn = utils.get_loss(loss, reduction="none")
         self.random_state = random_state
         self.n_jobs = joblib.effective_n_jobs(n_jobs)
         if n_jobs != 1:
-            print(f'PermutationEstimator will use {self.n_jobs} jobs')
+            print(f"PermutationEstimator will use {self.n_jobs} jobs")
 
-    def __call__(self,
-                 X,
-                 Y=None,
-                 batch_size=512,
-                 detect_convergence=True,
-                 thresh=0.025,
-                 n_permutations=None,
-                 min_coalition=0.0,
-                 max_coalition=1.0,
-                 verbose=False,
-                 bar=True):
-        '''
+    def __call__(
+        self,
+        X,
+        Y=None,
+        batch_size=512,
+        detect_convergence=True,
+        thresh=0.025,
+        n_permutations=None,
+        min_coalition=0.0,
+        max_coalition=1.0,
+        verbose=False,
+        bar=True,
+    ):
+        """
         Estimate SAGE values.
 
         Args:
@@ -60,21 +59,20 @@ class PermutationEstimator:
         smallest values.
 
         Returns: Explanation object.
-        '''
+        """
         # Set random state.
         self.rng = np.random.default_rng(seed=self.random_state)
 
         # Determine explanation type.
         if Y is not None:
-            explanation_type = 'SAGE'
+            explanation_type = "SAGE"
         else:
-            explanation_type = 'Shapley Effects'
+            explanation_type = "Shapley Effects"
 
         # Verify model.
         N, _ = X.shape
         num_features = self.imputer.num_groups
-        X, Y = utils.verify_model_data(self.imputer, X, Y, self.loss_fn,
-                                       batch_size)
+        X, Y = utils.verify_model_data(self.imputer, X, Y, self.loss_fn, batch_size)
 
         # Determine min/max coalition sizes.
         if isinstance(min_coalition, float):
@@ -85,7 +83,7 @@ class PermutationEstimator:
         assert max_coalition <= num_features
         assert min_coalition < max_coalition
         if min_coalition > 0 or max_coalition < num_features:
-            explanation_type = 'Relaxed ' + explanation_type
+            explanation_type = "Relaxed " + explanation_type
 
         # Possibly force convergence detection.
         if n_permutations is None:
@@ -93,7 +91,7 @@ class PermutationEstimator:
             if not detect_convergence:
                 detect_convergence = True
                 if verbose:
-                    print('Turning convergence detection on')
+                    print("Turning convergence detection on")
 
         if detect_convergence:
             assert 0 < thresh < 1
@@ -118,7 +116,9 @@ class PermutationEstimator:
 
             # Get results from parallel processing of batches.
             results = joblib.Parallel(n_jobs=self.n_jobs)(
-                joblib.delayed(self._process_sample)(x, y, num_features, min_coalition, max_coalition)
+                joblib.delayed(self._process_sample)(
+                    x, y, num_features, min_coalition, max_coalition
+                )
                 for x, y in batches
             )
 
@@ -133,16 +133,15 @@ class PermutationEstimator:
             # Print progress message.
             if verbose:
                 if detect_convergence:
-                    print(f'StdDev Ratio = {ratio:.4f} '
-                          f'(Converge at {thresh:.4f})')
+                    print(f"StdDev Ratio = {ratio:.4f} " f"(Converge at {thresh:.4f})")
                 else:
-                    print(f'StdDev Ratio = {ratio:.4f}')
+                    print(f"StdDev Ratio = {ratio:.4f}")
 
             # Check for convergence.
             if detect_convergence:
                 if ratio < thresh:
                     if verbose:
-                        print('Detected convergence')
+                        print("Detected convergence")
 
                     # Skip bar ahead.
                     if bar:

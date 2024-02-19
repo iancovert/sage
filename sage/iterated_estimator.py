@@ -1,17 +1,18 @@
 import numpy as np
-from sage import utils, core
 from tqdm.auto import tqdm
+
+from sage import core, utils
 
 
 def estimate_total(imputer, X, Y, batch_size, loss_fn):
-    '''Estimate sum of SAGE values.'''
+    """Estimate sum of SAGE values."""
     N = 0
     mean_loss = 0
     marginal_loss = 0
     num_features = imputer.num_groups
     for i in range(np.ceil(len(X) / batch_size).astype(int)):
-        x = X[i * batch_size:(i + 1) * batch_size]
-        y = Y[i * batch_size:(i + 1) * batch_size]
+        x = X[i * batch_size : (i + 1) * batch_size]
+        y = Y[i * batch_size : (i + 1) * batch_size]
         N += len(x)
 
         # All features.
@@ -28,7 +29,7 @@ def estimate_total(imputer, X, Y, batch_size, loss_fn):
 
 
 def estimate_holdout_importance(imputer, X, Y, batch_size, loss_fn, batches, rng):
-    '''Estimate the impact of holding out features individually.'''
+    """Estimate the impact of holding out features individually."""
     N, _ = X.shape
     num_features = imputer.num_groups
     all_loss = 0
@@ -48,44 +49,43 @@ def estimate_holdout_importance(imputer, X, Y, batch_size, loss_fn, batches, rng
         # Loss with features held out.
         for i in range(num_features):
             S[:, i] = 0
-            holdout_importance[i] += (
-                np.sum(loss_fn(imputer(x, S), y) - holdout_importance[i])
-                / (it + 1))
+            holdout_importance[i] += np.sum(
+                loss_fn(imputer(x, S), y) - holdout_importance[i]
+            ) / (it + 1)
             S[:, i] = 1
 
     return holdout_importance - all_loss
 
 
 class IteratedEstimator:
-    '''
+    """
     Estimate SAGE values one at a time by sampling subsets of features.
 
     Args:
       imputer: model that accommodates held out features.
       loss: loss function ('mse', 'cross entropy', 'zero one').
       random_state: random seed, enables reproducibility.
-    '''
+    """
 
-    def __init__(self,
-                 imputer,
-                 loss='cross entropy',
-                 random_state=None):
+    def __init__(self, imputer, loss="cross entropy", random_state=None):
         self.imputer = imputer
-        self.loss_fn = utils.get_loss(loss, reduction='none')
+        self.loss_fn = utils.get_loss(loss, reduction="none")
         self.random_state = random_state
 
-    def __call__(self,
-                 X,
-                 Y=None,
-                 batch_size=512,
-                 detect_convergence=True,
-                 thresh=0.025,
-                 n_samples=None,
-                 optimize_ordering=True,
-                 ordering_batches=1,
-                 verbose=False,
-                 bar=True):
-        '''
+    def __call__(
+        self,
+        X,
+        Y=None,
+        batch_size=512,
+        detect_convergence=True,
+        thresh=0.025,
+        n_samples=None,
+        optimize_ordering=True,
+        ordering_batches=1,
+        verbose=False,
+        bar=True,
+    ):
+        """
         Estimate SAGE values.
 
         Args:
@@ -109,21 +109,20 @@ class IteratedEstimator:
         analyzed.
 
         Returns: Explanation object.
-        '''
+        """
         # Set random state.
         self.rng = np.random.default_rng(seed=self.random_state)
 
         # Determine explanation type.
         if Y is not None:
-            explanation_type = 'SAGE'
+            explanation_type = "SAGE"
         else:
-            explanation_type = 'Shapley Effects'
+            explanation_type = "Shapley Effects"
 
         # Verify model.
         N, _ = X.shape
         num_features = self.imputer.num_groups
-        X, Y = utils.verify_model_data(self.imputer, X, Y, self.loss_fn,
-                                       batch_size)
+        X, Y = utils.verify_model_data(self.imputer, X, Y, self.loss_fn, batch_size)
 
         # Possibly force convergence detection.
         if n_samples is None:
@@ -131,7 +130,7 @@ class IteratedEstimator:
             if not detect_convergence:
                 detect_convergence = True
                 if verbose:
-                    print('Turning convergence detection on')
+                    print("Turning convergence detection on")
 
         if detect_convergence:
             assert 0 < thresh < 1
@@ -144,12 +143,12 @@ class IteratedEstimator:
         # Feature ordering.
         if optimize_ordering:
             if verbose:
-                print('Determining feature ordering...')
+                print("Determining feature ordering...")
             holdout_importance = estimate_holdout_importance(
-                self.imputer, X, Y, batch_size, self.loss_fn, ordering_batches,
-                self.rng)
+                self.imputer, X, Y, batch_size, self.loss_fn, ordering_batches, self.rng
+            )
             if verbose:
-                print('Done')
+                print("Done")
             # Use np.abs in case there are large negative contributors.
             ordering = list(np.argsort(np.abs(holdout_importance))[::-1])
         else:
@@ -192,30 +191,30 @@ class IteratedEstimator:
 
                 # Calculate progress.
                 std = tracker.std.item()
-                gap = (
-                    max(upper_val, tracker.values.item()) -
-                    min(lower_val, tracker.values.item()))
+                gap = max(upper_val, tracker.values.item()) - min(
+                    lower_val, tracker.values.item()
+                )
                 gap = max(gap, 1e-12)
                 ratio = std / gap
 
                 # Print progress message.
                 if verbose:
                     if detect_convergence:
-                        print(f'StdDev Ratio = {ratio:.4f} '
-                              f'(Converge at {thresh:.4f})')
+                        print(
+                            f"StdDev Ratio = {ratio:.4f} " f"(Converge at {thresh:.4f})"
+                        )
                     else:
-                        print('StdDev Ratio = {:.4f}'.format(ratio))
+                        print("StdDev Ratio = {:.4f}".format(ratio))
 
                 # Check for convergence.
                 if detect_convergence:
                     if ratio < thresh:
                         if verbose:
-                            print('Detected feature convergence')
+                            print("Detected feature convergence")
 
                         # Skip bar ahead.
                         if bar:
-                            bar.n = np.around(
-                                bar.total * (i + 1) / num_features, 4)
+                            bar.n = np.around(bar.total * (i + 1) / num_features, 4)
                             bar.refresh()
                         break
 
@@ -226,7 +225,7 @@ class IteratedEstimator:
                     bar.refresh()
 
             if verbose:
-                print(f'Done with feature {i}')
+                print(f"Done with feature {i}")
             tracker_list.append(tracker)
 
             # Adjust min max value.
@@ -238,9 +237,7 @@ class IteratedEstimator:
 
         # Extract SAGE values.
         reverse_ordering = [ordering.index(ind) for ind in range(num_features)]
-        values = np.array(
-            [tracker_list[ind].values.item() for ind in reverse_ordering])
-        std = np.array(
-            [tracker_list[ind].std.item() for ind in reverse_ordering])
+        values = np.array([tracker_list[ind].values.item() for ind in reverse_ordering])
+        std = np.array([tracker_list[ind].std.item() for ind in reverse_ordering])
 
         return core.Explanation(values, std, explanation_type)
