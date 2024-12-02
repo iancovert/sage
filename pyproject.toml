@@ -58,10 +58,6 @@ packages = ["sage"]
 
 [tool.ruff]
 
-
-include = ["*.py", "*.pyi", "**/pyproject.toml", "*.ipynb"]
-
-
 [tool.ruff.lint]
 
 # See rules: https://beta.ruff.rs/docs/rules/
