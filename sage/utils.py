@@ -118,7 +118,7 @@ def verify_model_data(imputer, X, Y, loss, batch_size):
                     Y[Y == -1] = 0
                 else:
                     raise ValueError(
-                        "labels for binary classification must be " "[0, 1] or [-1, 1]"
+                        "labels for binary classification must be [0, 1] or [-1, 1]"
                     )
 
             # Check for valid probability outputs.
@@ -208,7 +208,7 @@ class MSELoss:
             target = np.expand_dims(target, -1)
         elif not target.shape == pred.shape:
             raise ValueError(
-                "shape mismatch, pred has shape {} and target " "has shape {}".format(
+                "shape mismatch, pred has shape {} and target has shape {}".format(
                     pred.shape, target.shape
                 )
             )
