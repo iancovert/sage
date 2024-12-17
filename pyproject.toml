@@ -1,7 +1,7 @@
 
 [project]
 name = "sage-importance"
-version = "0.0.6"
+version = "0.0.7"
 description = "For calculating global feature importance using Shapley values."
 readme = "README.md"
 license = {text = "MIT License"}
@@ -57,10 +57,6 @@ build-backend = "setuptools.build_meta"
 packages = ["sage"]
 
 [tool.ruff]
-
-
-include = ["*.py", "*.pyi", "**/pyproject.toml", "*.ipynb"]
-
 
 [tool.ruff.lint]
 
