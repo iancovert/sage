@@ -75,7 +75,7 @@ def bike():
     df = df.drop("datetime", axis=1)
 
     # Reorder and rename columns.
-    df = df[["year", "month", "day", "hour"] + columns[1:]]
+    df = df[["year", "month", "day", "hour", *columns[1:]]]
     df.columns = list(map(str.title, df.columns))
     return df
 
