@@ -36,8 +36,8 @@ def model_conversion(model):
 
         model.eval()
         device = next(model.parameters()).device
-        return (
-            lambda x: model(torch.tensor(x, dtype=torch.float32, device=device))
+        return lambda x: (
+            model(torch.tensor(x, dtype=torch.float32, device=device))
             .cpu()
             .data.numpy()
         )
