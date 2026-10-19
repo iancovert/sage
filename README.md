@@ -38,7 +38,7 @@ model = ...
 imputer = sage.MarginalImputer(model, x[:128])
 
 # Set up an estimator
-estimator = sage.PermutationEstimator(imputer, 'mse')
+estimator = sage.PermutationEstimator(imputer, "mse")
 
 # Calculate SAGE values
 sage_values = estimator(x, y)
